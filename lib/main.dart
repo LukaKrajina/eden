@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
+import 'dart:convert'; // Added for JSON
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'misc/pro_player_grid.dart';
@@ -20,9 +19,16 @@ const Color kFaceitText = Color(0xFFEEEEEE);
 const Color kFaceitTextDim = Color(0xFFAAAAAA);
 const Color kFaceitBorder = Color(0xFF333333);
 
+// --- Global Settings ---
+String g_CS2Path = "";
+final ValueNotifier<String> appLanguageNotifier = ValueNotifier("English");
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Load Settings on Start
+  await _loadSettings();
+
   final steam = SteamService();
   await steam.init();
 
@@ -37,12 +43,42 @@ void main() async {
   ));
 }
 
+// --- Persistence Helpers ---
+Future<void> _loadSettings() async {
+  try {
+    final file = File('eden_config.json');
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      final map = jsonDecode(content);
+      g_CS2Path = map['cs2_path'] ?? "";
+      appLanguageNotifier.value = map['language'] ?? "English";
+    }
+  } catch (e) {
+    print("Error loading settings: $e");
+  }
+}
+
+Future<void> _saveSettings() async {
+  try {
+    final file = File('eden_config.json');
+    final map = {
+      'cs2_path': g_CS2Path,
+      'language': appLanguageNotifier.value,
+    };
+    await file.writeAsString(jsonEncode(map));
+  } catch (e) {
+    print("Error saving settings: $e");
+  }
+}
+
 class MyApp extends StatelessWidget {
   final SteamService steam;
   final GsiServer gsiServer;
   final P2PService p2pService;
+  // Lgpkg instance for the title, dynamically updated via Builder
+  final Lgpkg _lgpkg = Lgpkg(); 
 
-  const MyApp({
+  MyApp({
     super.key, 
     required this.steam, 
     required this.gsiServer,
@@ -51,27 +87,35 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'EDEN Client',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: kFaceitDarkBg,
-        primaryColor: kFaceitOrange,
-        cardColor: kFaceitSurface,
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: kFaceitText, fontFamily: 'Roboto'),
-          titleLarge: TextStyle(color: kFaceitText, fontFamily: 'Oswald', fontWeight: FontWeight.bold),
-        ),
-        colorScheme: const ColorScheme.dark(
-          primary: kFaceitOrange,
-          surface: kFaceitSurface,
-        ),
-      ),
-      home: ServerControlPanel(
-        steam: steam, 
-        gsiServer: gsiServer, 
-        p2pService: p2pService, 
-      ),
+    // Listen to language changes to rebuild the whole app (updates Title & Directionality if needed)
+    return ValueListenableBuilder<String>(
+      valueListenable: appLanguageNotifier,
+      builder: (context, language, child) {
+        _lgpkg.currentLanguage = language;
+        
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: _lgpkg.get("AppTitle"),
+          theme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: kFaceitDarkBg,
+            primaryColor: kFaceitOrange,
+            cardColor: kFaceitSurface,
+            textTheme: const TextTheme(
+              bodyMedium: TextStyle(color: kFaceitText, fontFamily: 'Roboto'),
+              titleLarge: TextStyle(color: kFaceitText, fontFamily: 'Oswald', fontWeight: FontWeight.bold),
+            ),
+            colorScheme: const ColorScheme.dark(
+              primary: kFaceitOrange,
+              surface: kFaceitSurface,
+            ),
+          ),
+          home: ServerControlPanel(
+            steam: steam, 
+            gsiServer: gsiServer, 
+            p2pService: p2pService, 
+          ),
+        );
+      },
     );
   }
 }
@@ -118,8 +162,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   String _myPeerID = "";
-  String _cs2Path = ""; 
-  String _status = "WAITING FOR ACTION";
+  
+  String _status = "WAITING FOR ACTION"; 
   String _level = "10";
   String _score = "CT 0 - 0 T";
   
@@ -151,7 +195,12 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   @override
   void initState() {
     super.initState();
+    // Sync local Lgpkg with global setting
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
+    
+    _status = _lgpkg.get("WaitingAction");
     _nameController = TextEditingController(text: widget.steam.getPlayerName());
+    _cs2PathController.text = g_CS2Path; // Load global path into controller
 
     _scoreAcquirer();
     _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
@@ -164,7 +213,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   @override
   void dispose() {
     _scoreTimer?.cancel();
-    if(_refreshTimer!.isActive){
+    if(_refreshTimer != null && _refreshTimer!.isActive){
       _refreshTimer?.cancel();
     }
     _joinController.dispose();
@@ -195,11 +244,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
         setState(() {
           if (phase == 'warmup') {
-            _score = "WARMUP";
+            _score = _lgpkg.get("Warmup");
           } else if (phase == 'intermission') {
-            _score = "HALF TIME";
+            _score = _lgpkg.get("HalfTime");
           } else if (phase == 'gameover') {
-            _score = "FINAL: CT $ctScore - $tScore T";
+            _score = "${_lgpkg.get("Final")}: CT $ctScore - $tScore T";
             if (!_hasMinedThisMatch) {
                _hasMinedThisMatch = true; 
                
@@ -209,7 +258,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                widget.p2pService.submitMatchReward(duration, players);
                
                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Match Ended. Mining Block..."))
+                  SnackBar(content: Text(_lgpkg.get("MatchEndedMining")))
                );
             }
           } else {
@@ -232,14 +281,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   void _addFriend() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kFaceitSurface,
-      title: const Text("ADD FRIEND", style: TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+      title: Text(_lgpkg.get("AddFriend"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
       content: TextField(
         controller: _friendCodeController,
         style: const TextStyle(color: Colors.white),
-        decoration: const InputDecoration(labelText: "Enter Friend Code / Peer ID", hintText: "Qm..."),
+        decoration: InputDecoration(labelText: _lgpkg.get("EnterFriendCode"), hintText: "Qm..."),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCEL")),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
           onPressed: () {
@@ -255,7 +304,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
               Navigator.pop(ctx);
             }
           }, 
-          child: const Text("ADD")
+          child: const Text("ADD") 
         ),
       ],
     ));
@@ -263,7 +312,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _inviteFriend(Friend f) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("Invited ${f.name} to Lobby"),
+      content: Text("${_lgpkg.get("InvitedMsg")} ${f.name}"),
       backgroundColor: Colors.green,
     ));
   }
@@ -285,14 +334,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   // --- Profile & Wallet Logic ---
 
   String _getFriendCode() {
-    if (_myPeerID.length < 6) return "LOADING";
+    if (_myPeerID.length < 6) return _lgpkg.get("Loading");
     return _myPeerID.substring(_myPeerID.length - 6).toUpperCase();
   }
 
   Future<bool> _deductFunds(double amount, String actionName) async {
     double balance = await widget.p2pService.getBalance(_myPeerID);
     if (balance < amount) {
-      _showErrorDialog("INSUFFICIENT FUNDS", "You need $amount EDN to $actionName. Current: ${balance.toStringAsFixed(2)} EDN");
+      _showErrorDialog(_lgpkg.get("InsufficientFunds"), "You need $amount EDN to $actionName. Current: ${balance.toStringAsFixed(2)} EDN");
       return false;
     }
     
@@ -302,7 +351,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$amount EDN deducted for $actionName"), backgroundColor: kFaceitOrange));
       setState(() {}); 
     } else {
-      _showErrorDialog("TRANSACTION FAILED", "Could not process deduction.");
+      _showErrorDialog(_lgpkg.get("TransactionFailed"), _lgpkg.get("ProcessDeductionFailed"));
     }
     return success;
   }
@@ -311,17 +360,17 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     TextEditingController tempController = TextEditingController(text: _nameController.text);
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kFaceitSurface,
-      title: const Text("CHANGE IDENTITY", style: TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+      title: Text(_lgpkg.get("ChangeIdentity"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text("Changing your platform alias costs 10 EDN.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(_lgpkg.get("ChangeIdentityCost"), style: const TextStyle(color: Colors.grey, fontSize: 12)),
           const SizedBox(height: 10),
-          TextField(controller: tempController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "New Alias")),
+          TextField(controller: tempController, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: _lgpkg.get("NewAlias"))),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCEL")),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
           onPressed: () async {
@@ -330,7 +379,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
               Navigator.pop(ctx);
             }
           }, 
-          child: const Text("PAY 10 EDN")
+          child: Text(_lgpkg.get("Pay10EDN"))
         ),
       ],
     ));
@@ -399,14 +448,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(4)),
-                  child: Text("LEVEL $_level", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+                  child: Text("${_lgpkg.get("Level").toUpperCase()} $_level", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
                 ),
                 const Divider(color: kFaceitBorder, height: 30),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildProfileInfoItem("FRIEND CODE", _getFriendCode()),
-                    _buildProfileInfoItem("PEER ID", _myPeerID.length > 8 ? "${_myPeerID.substring(0,8)}..." : _myPeerID),
+                    _buildProfileInfoItem(_lgpkg.get("FriendCode"), _getFriendCode()),
+                    _buildProfileInfoItem(_lgpkg.get("PeerID"), _myPeerID.length > 8 ? "${_myPeerID.substring(0,8)}..." : _myPeerID),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -415,7 +464,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey)),
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text("CLOSE", style: TextStyle(color: Colors.white)),
+                    child: Text(_lgpkg.get("Close"), style: const TextStyle(color: Colors.white)),
                   ),
                 )
               ],
@@ -489,12 +538,12 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _handleShieldClick() async {
     if (!_isEngineRunning) {
-      setState(() => _status = "INITIALIZING AC...");
+      setState(() => _status = _lgpkg.get("InitializingAC"));
       await _launchAntiCheatEngine();
       setState(() {
         _isEngineRunning = true;
         _isCompanionVisible = true;
-        _status = "ANTI-CHEAT ACTIVE";
+        _status = _lgpkg.get("ACActive");
       });
     } else {
       setState(() => _isCompanionVisible = !_isCompanionVisible);
@@ -505,7 +554,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (_isSearching) {
       setState(() {
         _isSearching = false;
-        _status = "MATCH CANCELLED";
+        _status = _lgpkg.get("MatchCancelled");
       });
       _runner.stopClient();
       _runner.stopServer();
@@ -515,19 +564,19 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Future<void> _hostMatch() async {
-    if (await _configurator.setupGsi(_cs2Path) == false) {
-      _showErrorDialog("CONFIG ERROR", "Could not write GSI config.");
+    if (await _configurator.setupGsi(g_CS2Path) == false) {
+      _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
       return;
     }
     
     if (!_isEngineRunning) {
-      _showErrorDialog("ANTI-CHEAT REQUIRED", "Active Shield required to host games.");
+      _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("ShieldRequiredMsg"));
       return;
     }
 
     setState(() {
       _isSearching = true;
-      _status = "SEARCHING FOR MATCH...";
+      _status = _lgpkg.get("SearchingMsg");
     });
 
     String matchResult = await widget.p2pService.findMatch();
@@ -537,28 +586,28 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (matchResult.isNotEmpty && !matchResult.contains("Error")) {
        setState(() {
         _isSearching = false;
-        _status = "MATCH FOUND!";
+        _status = _lgpkg.get("MatchFound");
       });
       
       String hostIP = widget.p2pService.getVirtualIPForPeer(matchResult);
       widget.p2pService.connectToPeer(matchResult);
       await Future.delayed(const Duration(seconds: 3));
-      await _runner.startClient(_cs2Path, hostIP, _nameController.text);
+      await _runner.startClient(g_CS2Path, hostIP, _nameController.text);
     }
   }
 
   void _createMatch() async {
     if (!_isSearching) {
-      if (await _configurator.setupGsi(_cs2Path) == false) return;
+      if (await _configurator.setupGsi(g_CS2Path) == false) return;
       if (!_isEngineRunning) {
-        _showErrorDialog("ANTI-CHEAT REQUIRED", "You must enable the Eden Anti-Cheat shield.");
+        _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("EnableShieldMsg"));
         return;
       }
 
-      setState(() => _status = "STARTING SERVER ($_selectedModeTitle)...");
+      setState(() => _status = "${_lgpkg.get("StartingServer")} (${_lgpkg.get(_selectedModeTitle)})...");
       
       await _runner.startServer(
-        _cs2Path, 
+        g_CS2Path, 
         "0.0.0.0", 
         _selectedMap, 
         _selectedGameType, 
@@ -569,7 +618,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         27015
       );
       
-      setState(() => _status = "SERVER ONLINE (WAITING)");
+      setState(() => _status = _lgpkg.get("ServerOnline"));
     }
   }
 
@@ -578,13 +627,16 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (targetID.isEmpty) return;
     String hostIP = widget.p2pService.getVirtualIPForPeer(targetID);
     widget.p2pService.connectToPeer(targetID);
-    await _runner.startClient(_cs2Path, hostIP, _nameController.text);
+    await _runner.startClient(g_CS2Path, hostIP, _nameController.text);
   }
 
   // --- UI Layout ---
 
   @override
   Widget build(BuildContext context) {
+    // Ensure this widget also rebuilds correctly when language changes
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
+
     return Scaffold(
       backgroundColor: kFaceitDarkBg,
       body: Stack(
@@ -660,10 +712,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Widget _buildTopHeader() {
-    String title = "PLAY";
-    if (_currentView == 0) title = "Play";
-    if (_currentView == 1) title = "Social";
-    if (_currentView == 2) title = "PRO Config";
+    String title = _lgpkg.get("PlayTitle");
+    if (_currentView == 0) title = _lgpkg.get("PlayTitle");
+    if (_currentView == 1) title = _lgpkg.get("SocialTitle");
+    if (_currentView == 2) title = _lgpkg.get("ProConfigTitle");
 
     return Container(
       height: 80, padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -674,10 +726,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           const SizedBox(width: 40),
           
           if (_currentView == 0) ...[
-            _buildHeaderTab("MATCHMAKING", _selectedModeTitle == "MATCHMAKING"),
-            _buildHeaderTab("TOURNAMENTS", _selectedModeTitle == "TOURNAMENTS"),
-            _buildHeaderTab("DEATHMATCH", _selectedModeTitle == "DEATHMATCH"),
-            _buildHeaderTab("1V1 HUBS", _selectedModeTitle == "1V1 HUBS"),
+            _buildHeaderTab("Matchmaking", _selectedModeTitle == "MATCHMAKING"),
+            _buildHeaderTab("Tournaments", _selectedModeTitle == "TOURNAMENTS"),
+            _buildHeaderTab("Deathmatch", _selectedModeTitle == "DEATHMATCH"),
+            _buildHeaderTab("1v1Hubs", _selectedModeTitle == "1V1 HUBS"),
           ],
           
           const Spacer(),
@@ -695,14 +747,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                 children: [
                   Icon(Icons.verified_user, size: 16, color: _isEngineRunning ? Colors.green : Colors.red),
                   const SizedBox(width: 8),
-                  Text("ANTI-CHEAT", style: TextStyle(color: _isEngineRunning ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text(_lgpkg.get("AntiCheat"), style: TextStyle(color: _isEngineRunning ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
           ),
           const SizedBox(width: 15),
           
-          // Updated Wallet Button
           IconButton(
             icon: const Icon(Icons.account_balance_wallet, color: kFaceitTextDim), 
             onPressed: () => showDialog(
@@ -725,14 +776,20 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  Widget _buildHeaderTab(String title, bool isActive) {
+  Widget _buildHeaderTab(String key, bool isActive) {
+    String internalMode = "";
+    if (key == "Matchmaking") internalMode = "MATCHMAKING";
+    if (key == "Tournaments") internalMode = "TOURNAMENTS";
+    if (key == "Deathmatch") internalMode = "DEATHMATCH";
+    if (key == "1v1Hubs") internalMode = "1V1 HUBS";
+
     return InkWell(
-      onTap: () => _setGameMode(title), 
+      onTap: () => _setGameMode(internalMode), 
       child: Container(
         margin: const EdgeInsets.only(right: 30),
         padding: const EdgeInsets.symmetric(vertical: 26),
         decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kFaceitOrange, width: 3)) : null),
-        child: Text(title, style: TextStyle(color: isActive ? kFaceitOrange : kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+        child: Text(_lgpkg.get(key).toUpperCase(), style: TextStyle(color: isActive ? kFaceitOrange : kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
       ),
     );
   }
@@ -744,11 +801,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("FRIENDS LIST", style: TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            Text(_lgpkg.get("FriendsList"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
               icon: const Icon(Icons.person_add),
-              label: const Text("ADD FRIEND"),
+              label: Text(_lgpkg.get("AddFriend")),
               onPressed: _addFriend,
             )
           ],
@@ -756,7 +813,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         const SizedBox(height: 20),
         Expanded(
           child: _friends.isEmpty 
-          ? Center(child: Text("No friends yet. Add one using their Peer ID.", style: TextStyle(color: kFaceitTextDim)))
+          ? Center(child: Text(_lgpkg.get("NoFriendsMsg"), style: const TextStyle(color: kFaceitTextDim)))
           : ListView.builder(
               itemCount: _friends.length,
               itemBuilder: (ctx, i) {
@@ -783,10 +840,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
-                                child: Text("LVL ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                                child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
                               ),
                               const SizedBox(width: 8),
-                              Text("Skill: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text("${_lgpkg.get("Skill")}: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
                               const SizedBox(width: 8),
                               Text("${friend.edn} EDN", style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
@@ -796,13 +853,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                       const Spacer(),
                       OutlinedButton(
                         onPressed: () => _inviteFriend(friend),
-                        child: const Text("INVITE"),
+                        child: Text(_lgpkg.get("Invite")),
                       ),
                       const SizedBox(width: 12),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
                         onPressed: () => _openTradeInterface(friend),
-                        child: const Text("TRADE"),
+                        child: Text(_lgpkg.get("Trade")),
                       ),
                     ],
                   ),
@@ -835,7 +892,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), color: kFaceitOrange, child: Text(_isSearching ? "SEARCHING" : "LOBBY", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), color: kFaceitOrange, child: Text(_isSearching ? _lgpkg.get("Searching").toUpperCase() : _lgpkg.get("Lobby"), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white))),
                 const SizedBox(height: 8),
                 Text(_selectedMap.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 40, fontFamily: "Oswald", fontWeight: FontWeight.bold)),
                 Text(_status, style: const TextStyle(color: Colors.white70, letterSpacing: 1.5)),
@@ -844,7 +901,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           ),
         ),
         const SizedBox(height: 24),
-        const Text("TEAM ROSTER", style: TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        Text(_lgpkg.get("TeamRoster"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         const SizedBox(height: 10),
         Expanded(child: _buildDynamicPlayerGrid()),
       ],
@@ -860,7 +917,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     } else if (_selectedModeTitle == "1V1 HUBS") {
       return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           SizedBox(width: 200, child: _buildPlayerRow(0, true, scale: 1.2)),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 40), child: Text("VS", style: TextStyle(fontSize: 40, color: kFaceitOrange, fontFamily: "Oswald"))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 40), child: Text(_lgpkg.get("VS"), style: const TextStyle(fontSize: 40, color: kFaceitOrange, fontFamily: "Oswald"))),
           SizedBox(width: 200, child: _buildPlayerRow(1, false, scale: 1.2)),
       ]);
     } else {
@@ -868,7 +925,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           Expanded(child: Column(children: List.generate(5, (i) => _buildPlayerRow(i, true)))),
           const SizedBox(width: 24),
           Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text("VS", style: TextStyle(color: kFaceitTextDim.withOpacity(0.3), fontSize: 24, fontWeight: FontWeight.bold)),
+            Text(_lgpkg.get("VS"), style: TextStyle(color: kFaceitTextDim.withOpacity(0.3), fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Text(_score, style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
           ]),
@@ -889,7 +946,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           CircleAvatar(radius: 16, backgroundColor: Colors.grey[800], backgroundImage: (isMe && _avatarImage != null) ? FileImage(_avatarImage!) : null, child: (isMe && _avatarImage == null) ? const Icon(Icons.person, size: 16) : null),
           const SizedBox(width: 12),
           if (!compact) ...[
-            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(isMe ? _nameController.text : "Empty Slot", style: TextStyle(color: isMe ? Colors.white : kFaceitTextDim, fontWeight: FontWeight.bold)), if (isMe) Text("Lvl $_level", style: const TextStyle(color: kFaceitOrange, fontSize: 10))]),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(isMe ? _nameController.text : _lgpkg.get("EmptySlot"), style: TextStyle(color: isMe ? Colors.white : kFaceitTextDim, fontWeight: FontWeight.bold)), if (isMe) Text("Lvl $_level", style: const TextStyle(color: kFaceitOrange, fontSize: 10))]),
             const Spacer(), if (isMe) const Icon(Icons.check_circle, color: kFaceitOrange, size: 16),
           ]
         ],
@@ -908,30 +965,122 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           child: Container(
             height: 60, alignment: Alignment.center,
             decoration: BoxDecoration(color: _isSearching ? Colors.red[900] : kFaceitOrange, borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: (_isSearching ? Colors.red : kFaceitOrange).withOpacity(0.4), blurRadius: 15, spreadRadius: 1)]),
-            child: Text(_isSearching ? "CANCEL SEARCH" : "PLAY", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
+            child: Text(_isSearching ? _lgpkg.get("CancelSearch") : _lgpkg.get("Play"), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
           ),
         ),
         const SizedBox(height: 12),
-        OutlinedButton(onPressed: _createMatch, style: OutlinedButton.styleFrom(side: const BorderSide(color: kFaceitBorder), padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))), child: const Text("CREATE CUSTOM LOBBY", style: TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold))),
+        OutlinedButton(onPressed: _createMatch, style: OutlinedButton.styleFrom(side: const BorderSide(color: kFaceitBorder), padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))), child: Text(_lgpkg.get("CreateCustomLobby"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold))),
         const SizedBox(height: 30),
-        const Text("MAP SELECTION", style: TextStyle(color: kFaceitTextDim, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(_lgpkg.get("MapSelection"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         Expanded(child: GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.5, crossAxisSpacing: 8, mainAxisSpacing: 8), itemCount: _maps.length, itemBuilder: (ctx, i) {
           bool isSelected = _selectedMap == _maps[i];
           return InkWell(onTap: () => setState(() => _selectedMap = _maps[i]), child: Container(decoration: BoxDecoration(color: isSelected ? kFaceitOrange : kFaceitSurface, borderRadius: BorderRadius.circular(4), border: Border.all(color: isSelected ? kFaceitOrange : kFaceitBorder)), alignment: Alignment.center, child: Text(_maps[i].replaceAll("de_", "").toUpperCase(), style: TextStyle(color: isSelected ? Colors.white : kFaceitTextDim, fontWeight: FontWeight.bold, fontSize: 12))));
         })),
         const SizedBox(height: 20),
-        TextField(controller: _joinController, style: const TextStyle(color: kFaceitText), decoration: InputDecoration(hintText: "Paste Hub ID / IP", hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kFaceitSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kFaceitOrange), onPressed: _joinGame))),
+        TextField(controller: _joinController, style: const TextStyle(color: kFaceitText), decoration: InputDecoration(hintText: _lgpkg.get("PasteHubID"), hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kFaceitSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kFaceitOrange), onPressed: _joinGame))),
       ],
     );
   }
 
   void _showErrorDialog(String title, String msg) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kFaceitSurface, title: Text(title, style: const TextStyle(color: kFaceitOrange)), content: Text(msg, style: const TextStyle(color: kFaceitText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))]));
+    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kFaceitSurface, title: Text(title, style: const TextStyle(color: kFaceitOrange)), content: Text(msg, style: const TextStyle(color: kFaceitText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
   }
   
   void _showSettingsWindow() {
-    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: kFaceitSurface, child: Container(width: 400, padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("SETTINGS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), const SizedBox(height: 20), const Text("CS2 Installation Path", style: TextStyle(color: Colors.grey)), TextField(controller: _cs2PathController, style: const TextStyle(color: Colors.white)), const SizedBox(height: 20), Align(alignment: Alignment.centerRight, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange), onPressed: (){ _cs2Path = _cs2PathController.text; Navigator.pop(ctx); }, child: const Text("SAVE")))]))));
+    // Temporary state for the dialog
+    String tempLanguage = appLanguageNotifier.value;
+    
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            backgroundColor: kFaceitSurface, 
+            child: Container(
+              width: 400, 
+              padding: const EdgeInsets.all(24), 
+              child: Column(
+                mainAxisSize: MainAxisSize.min, 
+                crossAxisAlignment: CrossAxisAlignment.start, 
+                children: [
+                  Text(_lgpkg.get("Settings"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: "Oswald", fontSize: 20)), 
+                  const SizedBox(height: 20), 
+                  
+                  // CS2 Path Input
+                  Text(_lgpkg.get("CS2Path"), style: const TextStyle(color: Colors.grey)), 
+                  TextField(
+                    controller: _cs2PathController, 
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                    ),
+                  ), 
+                  const SizedBox(height: 20),
+                  
+                  // Language Selection
+                  Text("Language / 语言", style: const TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(border: Border.all(color: kFaceitBorder), borderRadius: BorderRadius.circular(4)),
+                    child: DropdownButton<String>(
+                      value: tempLanguage,
+                      dropdownColor: kFaceitSurface,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      icon: const Icon(Icons.language, color: kFaceitOrange),
+                      style: const TextStyle(color: Colors.white),
+                      items: const [
+                        DropdownMenuItem(value: "English", child: Text("English")),
+                        DropdownMenuItem(value: "Chinese", child: Text("Chinese (中文)")),
+                      ],
+                      onChanged: (val) {
+                         if(val != null) setDialogState(() => tempLanguage = val);
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 30), 
+                  
+                  // Action Buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(_lgpkg.get("Cancel"), style: const TextStyle(color: kFaceitTextDim))
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange), 
+                        onPressed: (){ 
+                          // 1. Update Global Settings
+                          g_CS2Path = _cs2PathController.text;
+                          appLanguageNotifier.value = tempLanguage;
+                          
+                          // 2. Save to File
+                          _saveSettings();
+                          
+                          // 3. Close Dialog
+                          Navigator.pop(ctx); 
+                          
+                          // 4. Force UI Refresh (Language change handles itself via Notifier)
+                          setState(() {});
+                        }, 
+                        child: const Text("SUBMIT")
+                      ),
+                    ],
+                  )
+                ]
+              )
+            )
+          );
+        }
+      )
+    );
   }
 }
 
@@ -948,12 +1097,16 @@ class WalletWindow extends StatefulWidget {
 }
 
 class _WalletWindowState extends State<WalletWindow> {
+  final Lgpkg _lgpkg = Lgpkg();
   double _balance = 0.0;
   Timer? _heartbeat;
 
   @override
   void initState() {
     super.initState();
+    // Sync language
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
+    
     _fetchBalance();
     // Heartbeat to refresh balance every second
     _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) => _fetchBalance());
@@ -978,26 +1131,26 @@ class _WalletWindowState extends State<WalletWindow> {
       context: context, 
       builder: (ctx) => AlertDialog(
         backgroundColor: kFaceitSurface,
-        title: const Text("SEND EDN", style: TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+        title: Text(_lgpkg.get("SendEDN"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: recipientCtrl,
               style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: "Receiver Peer ID", hintText: "Qm..."),
+              decoration: InputDecoration(labelText: _lgpkg.get("ReceiverID"), hintText: "Qm..."),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: amountCtrl,
               keyboardType: TextInputType.number,
               style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: "Amount", suffixText: "EDN"),
+              decoration: InputDecoration(labelText: _lgpkg.get("Amount"), suffixText: "EDN"),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CANCEL")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
             onPressed: () async {
@@ -1007,13 +1160,13 @@ class _WalletWindowState extends State<WalletWindow> {
                 bool success = await widget.p2pService.sendEdenCoin(widget.myPeerID, recipientCtrl.text, amt);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(success ? "Sent $amt EDN!" : "Transfer Failed."),
+                    content: Text(success ? "Sent $amt EDN!" : _lgpkg.get("TransferFailed")),
                     backgroundColor: success ? Colors.green : Colors.red,
                   ));
                 }
               }
             }, 
-            child: const Text("SEND")
+            child: Text(_lgpkg.get("Send"))
           )
         ],
       )
@@ -1025,11 +1178,11 @@ class _WalletWindowState extends State<WalletWindow> {
       context: context, 
       builder: (ctx) => AlertDialog(
         backgroundColor: kFaceitSurface,
-        title: const Text("RECEIVE EDN", style: TextStyle(color: Colors.greenAccent, fontFamily: "Oswald")),
+        title: Text(_lgpkg.get("ReceiveEDN"), style: const TextStyle(color: Colors.greenAccent, fontFamily: "Oswald")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Share this Peer ID to receive funds:", style: TextStyle(color: Colors.grey)),
+            Text(_lgpkg.get("ShareIDMsg"), style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 15),
             Container(
               padding: const EdgeInsets.all(10),
@@ -1042,12 +1195,12 @@ class _WalletWindowState extends State<WalletWindow> {
           TextButton(
             onPressed: () {
               Clipboard.setData(ClipboardData(text: widget.myPeerID));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Copied to Clipboard")));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_lgpkg.get("CopiedClipboard"))));
               Navigator.pop(ctx);
             }, 
-            child: const Text("COPY")
+            child: Text(_lgpkg.get("Copy"))
           ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("CLOSE")),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Close"))),
         ],
       )
     );
@@ -1055,6 +1208,9 @@ class _WalletWindowState extends State<WalletWindow> {
 
   @override
   Widget build(BuildContext context) {
+    // Ensure text updates if language changed while wallet open
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -1068,11 +1224,11 @@ class _WalletWindowState extends State<WalletWindow> {
         ),
         child: Column(
           children: [
-            const Text("EDEN WALLET", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text(_lgpkg.get("EdenWallet"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const Spacer(),
             Text("${_balance.toStringAsFixed(2)} EDN", style: const TextStyle(color: kFaceitOrange, fontSize: 32, fontFamily: "Oswald")),
             const SizedBox(height: 8),
-            const Text("Live Balance", style: TextStyle(color: Colors.grey, fontSize: 10)),
+            Text(_lgpkg.get("LiveBalance"), style: const TextStyle(color: Colors.grey, fontSize: 10)),
             const Spacer(),
             Row(
               children: [
@@ -1080,7 +1236,7 @@ class _WalletWindowState extends State<WalletWindow> {
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange, foregroundColor: Colors.white),
                     onPressed: _showSendDialog,
-                    child: const Text("SEND"),
+                    child: Text(_lgpkg.get("Send")),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1088,13 +1244,13 @@ class _WalletWindowState extends State<WalletWindow> {
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.greenAccent), foregroundColor: Colors.greenAccent),
                     onPressed: _showReceiveDialog,
-                    child: const Text("RECEIVE"),
+                    child: Text(_lgpkg.get("Receive")),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            const Text("Mining rewards are deposited after every match.", style: TextStyle(color: Colors.grey, fontSize: 10), textAlign: TextAlign.center),
+            Text(_lgpkg.get("MiningRewardsMsg"), style: const TextStyle(color: Colors.grey, fontSize: 10), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -1118,6 +1274,7 @@ class TradeOverlay extends StatefulWidget {
 }
 
 class _TradeOverlayState extends State<TradeOverlay> {
+  final Lgpkg _lgpkg = Lgpkg();
   final TextEditingController _amountController = TextEditingController(text: "10");
   double _myBalance = 0.0;
   double _timerValue = 1.0; 
@@ -1126,6 +1283,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
   @override
   void initState() {
     super.initState();
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
     _fetchBalance();
     _startTimer();
   }
@@ -1165,15 +1323,16 @@ class _TradeOverlayState extends State<TradeOverlay> {
     if (mounted) {
       Navigator.pop(context);
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Trade Successful!"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_lgpkg.get("TradeSuccessful")), backgroundColor: Colors.green));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Trade Failed."), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_lgpkg.get("TradeFailed")), backgroundColor: Colors.red));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
     double tradeAmount = double.tryParse(_amountController.text) ?? 0.0;
 
     return Dialog(
@@ -1188,7 +1347,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(color: Color(0xFF121212), border: Border(bottom: BorderSide(color: kFaceitBorder))),
-              child: const Center(child: Text("SECURE TRADE OFFER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2))),
+              child: Center(child: Text(_lgpkg.get("SecureTradeOffer"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2))),
             ),
             
             Expanded(
@@ -1205,9 +1364,9 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           const SizedBox(height: 16),
                           Text(widget.me, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                           const SizedBox(height: 8),
-                          Text("Holdings: ${_myBalance.toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.grey)),
+                          Text("${_lgpkg.get("Holdings")}: ${_myBalance.toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.grey)),
                           const SizedBox(height: 20),
-                          const Text("Est. Remaining:", style: TextStyle(color: kFaceitTextDim, fontSize: 12)),
+                          Text(_lgpkg.get("EstRemaining"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12)),
                           Text("${(_myBalance - tradeAmount).toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -1230,7 +1389,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           child: const Icon(Icons.arrow_forward, color: Colors.white, size: 30),
                         ),
                         const SizedBox(height: 20),
-                        const Text("TRADING AMOUNT", style: TextStyle(color: kFaceitTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
+                        Text(_lgpkg.get("TradingAmount"), style: const TextStyle(color: kFaceitTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: 100,
@@ -1262,9 +1421,9 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           const SizedBox(height: 16),
                           Text(widget.friend.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                           const SizedBox(height: 8),
-                          Text("Holdings: ${widget.friend.edn} EDN", style: const TextStyle(color: Colors.grey)),
+                          Text("${_lgpkg.get("Holdings")}: ${widget.friend.edn} EDN", style: const TextStyle(color: Colors.grey)),
                           const SizedBox(height: 20),
-                          const Text("Est. Total:", style: TextStyle(color: kFaceitTextDim, fontSize: 12)),
+                          Text(_lgpkg.get("EstTotal"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12)),
                           Text("${(widget.friend.edn + tradeAmount).toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.greenAccent, fontSize: 24, fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -1288,7 +1447,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
                             onPressed: () => Navigator.pop(context),
-                            child: const Text("CANCEL TRADE", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                            child: Text(_lgpkg.get("CancelTrade"), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1305,7 +1464,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                             onPressed: _executeTrade,
-                            child: const Text("CONFIRM & ACCEPT", style: TextStyle(fontWeight: FontWeight.bold)),
+                            child: Text(_lgpkg.get("ConfirmAccept"), style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1333,9 +1492,13 @@ class CompanionWindow extends StatefulWidget {
 }
 
 class _CompanionWindowState extends State<CompanionWindow> {
+  final Lgpkg _lgpkg = Lgpkg();
   Offset position = const Offset(50, 50);
+  
   @override
   Widget build(BuildContext context) {
+    _lgpkg.currentLanguage = appLanguageNotifier.value;
+    
     return Positioned(
       left: position.dx, top: position.dy,
       child: GestureDetector(
@@ -1346,7 +1509,7 @@ class _CompanionWindowState extends State<CompanionWindow> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [const Icon(Icons.shield, color: kFaceitOrange, size: 16), const SizedBox(width: 8), const Text("EDEN AC ACTIVE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)), const Spacer(), InkWell(onTap: widget.onMinimize, child: const Icon(Icons.close, color: Colors.grey, size: 16))]),
+              Row(children: [const Icon(Icons.shield, color: kFaceitOrange, size: 16), const SizedBox(width: 8), Text(_lgpkg.get("EdenACActive"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)), const Spacer(), InkWell(onTap: widget.onMinimize, child: const Icon(Icons.close, color: Colors.grey, size: 16))]),
               const SizedBox(height: 8),
               StreamBuilder(
                 stream: Stream.periodic(const Duration(seconds: 1)),
@@ -1354,8 +1517,8 @@ class _CompanionWindowState extends State<CompanionWindow> {
                   final info = widget.p2pService.getDashboardData();
                   return Row(
                     children: [
-                      Text("TUNNEL: ${info.isMounted ? 'SECURED' : 'WAITING'} \nSESSION: ${widget.p2pService.isConnected() ? 'CONNECTED' : 'IDLE'}", style: const TextStyle(color: Colors.grey, fontSize: 10, fontFamily: "monospace")),
-                      Spacer(),
+                      Text("TUNNEL: ${info.isMounted ? _lgpkg.get("TunnelSecured") : _lgpkg.get("TunnelWaiting")} \nSESSION: ${widget.p2pService.isConnected() ? _lgpkg.get("SessionConnected") : _lgpkg.get("SessionIdle")}", style: const TextStyle(color: Colors.grey, fontSize: 10, fontFamily: "monospace")),
+                      const Spacer(),
                       Text(info.date)
                     ],
                   );
