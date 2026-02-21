@@ -1,0 +1,2 @@
+go build -v -x -o libp2p_core.dll -buildmode=c-shared main.go (libp2p_core)
+g++ -shared -static -o adam.dll adam.cpp -I./wintun/include -DUNICODE -D_UNICODE -lws2_32 -luser32 -lshell32 -lgdi32 -lole32 -lshlwapi (adam)
