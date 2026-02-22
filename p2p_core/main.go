@@ -90,10 +90,8 @@ var myPeerID string
 func StartEdenNode(virtualIP *C.char) *C.char {
 	ctx = context.Background()
 
-	// 1. Initialize Blockchain State
 	InitializeChain()
 
-	// 2. Setup LibP2P Host
 	var err error
 	h, err = libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
@@ -104,17 +102,14 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		return C.CString("Error: " + err.Error())
 	}
 
-	// 3. Setup DHT & Discovery
 	kademliaDHT, _ = dht.New(ctx, h)
 	kademliaDHT.Bootstrap(ctx)
 
 	routingDiscovery := routing.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, routingDiscovery, "eden-cs2-lobby")
 
-	// 4. Setup PubSub (Consensus)
 	setupPubSub()
 
-	// 5. Setup Stream Handler (Game Data)
 	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
 		fmt.Println("[P2P] Incoming Game Connection")
 		streamLock.Lock()
@@ -144,7 +139,6 @@ func StopEdenNode() {
 
 //export SubmitGameBlock
 func SubmitGameBlock(duration C.int, playerCount C.int) *C.char {
-	// Optimization: Fast fail if offline
 	peerMutex.Lock()
 	alive := time.Since(lastSeenPeer) < 15*time.Second
 	peerMutex.Unlock()
@@ -190,12 +184,10 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 		return
 	}
 
-	// Optimization: Use buffer pool + minimal copy
 	payloadLen := int(len)
 	totalLen := 7 + payloadLen
 
 	bufPtr := bufferPool.Get().([]byte)
-	// Ensure buffer is big enough, usually 4096 is plenty
 	if cap(bufPtr) < totalLen {
 		bufPtr = make([]byte, totalLen)
 	}
@@ -216,16 +208,11 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 	frame[5] = byte(seq >> 8)
 	frame[6] = byte(seq)
 
-	// Zero-copy cast from C pointer to Go slice (unsafe but fast)
-	// We must copy *into* our Go-managed frame buffer immediately
 	cData := unsafe.Slice((*byte)(data), payloadLen)
 	copy(frame[7:], cData)
 
 	s.Write(frame)
 
-	// We cannot put 'frame' back in pool immediately if Write is async,
-	// but libp2p Write is blocking/buffered, so it is generally safe
-	// once Write returns.
 	bufferPool.Put(bufPtr)
 }
 
@@ -243,7 +230,6 @@ func readStreamLoop(s network.Stream) {
 		payloadLen := uint16(header[1])<<8 | uint16(header[2])
 		remoteSeq := uint32(header[3])<<24 | uint32(header[4])<<16 | uint32(header[5])<<8 | uint32(header[6])
 
-		// Stats & Heartbeat
 		updateNetworkStats(remoteSeq)
 
 		if header[0] == FrameHeartbeat {
@@ -251,7 +237,6 @@ func readStreamLoop(s network.Stream) {
 		}
 
 		if payloadLen > 0 {
-			// Read Payload
 			bufPtr := bufferPool.Get().([]byte)
 			if cap(bufPtr) < int(payloadLen) {
 				bufPtr = make([]byte, int(payloadLen))
@@ -263,8 +248,6 @@ func readStreamLoop(s network.Stream) {
 				return
 			}
 
-			// Pass to C
-			// We must Copy to C memory because Go GC might move 'payload'
 			cPtr := C.CBytes(payload)
 			C.CallInjectVPNPacket(cPtr, C.int(payloadLen))
 			C.free(cPtr)
@@ -363,7 +346,6 @@ func AutoConnectToPeers() *C.char {
 		return C.CString("DHT Not Ready")
 	}
 
-	// Discovery Logic
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
 	peerChan, _ := rd.FindPeers(ctx, "eden-cs2-lobby")
 
