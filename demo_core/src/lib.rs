@@ -184,8 +184,7 @@ fn process_internal(path: &str, db_url: &str) -> Result<String, String> {
     let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
     let mut parser = Parser::new(&mmap).map_err(|e| e.to_string())?;
     
-    let header = parser.header();
-    let map_name = header.map_name.clone();
+    let map_name = parser.header().map_name.clone();
     
     // Register observer and parse
     let collector = parser.register_observer::<StatsCollector>();
