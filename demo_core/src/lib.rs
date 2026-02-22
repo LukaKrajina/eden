@@ -2,238 +2,199 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use postgres::{Client, NoTls};
-use source2_demo::prelude::*;
+use source2_demo::{FieldValue, prelude::*};
 use source2_demo::proto::CDemoFileHeader;
 use memmap2::Mmap;
 
-#[repr(C)]
-pub struct DemoResult {
-    success: bool,
-    json_ptr: *mut c_char,
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn analyze_demo(
-    path_ptr: *const c_char, 
-    db_url_ptr: *const c_char
-) -> *mut c_char {
-    let c_path = unsafe { CStr::from_ptr(path_ptr) };
-    let c_db_url = unsafe { CStr::from_ptr(db_url_ptr) };
-    
-    let path = c_path.to_str().unwrap_or("");
-    let db_url = c_db_url.to_str().unwrap_or("");
-
-    match process_internal(path, db_url) {
-        Ok(json) => CString::new(json).unwrap().into_raw(),
-        Err(e) => CString::new(format!("{{ \"error\": \"{}\" }}", e)).unwrap().into_raw(),
-    }
-}
-
-
-//  ROUND & PLAYER DATA
-
-#[derive(Default)]
-struct RoundStat {
-    kills: i32,
-    assists: i32,
-    survived: bool,
-}
+// --- Data Structures ---
 
 #[derive(Default)]
 struct PlayerStats {
+    steam_id: String,
+    name: String,
     kills: i32,
     deaths: i32,
     assists: i32,
-    total_damage: f32,
-    name: String,
-    steam_id: String,
-    round_stats: Vec<RoundStat>,
-    opening_kills: i32,
-    multi_kills: i32,
+    total_damage: i32,
+    mvps: i32,
 }
 
 #[derive(Default)]
-struct StatsCollector {
-    players: HashMap<u32, PlayerStats>,   // key = userid (u32)
-    total_rounds: u32,
+struct MatchCollector {
+    players: HashMap<u64, PlayerStats>, // Key: UserID
     score_ct: i32,
     score_t: i32,
     map_name: String,
-    round_first_kill: bool,
 }
 
-//  OBSERVER – now compiles reliably
+fn extract_id(val: Option<&EventValue>) -> u64 {
+    match val {
+        Some(EventValue::Int(v)) => *v as u64,
+        Some(EventValue::Int(v)) => *v as u64,
+        Some(EventValue::U64(v)) => *v,
+        _ => 0,
+    }
+}
+
+fn extract_i32(val: Option<&EventValue>) -> i32 {
+    match val {
+        Some(EventValue::Int(v)) => *v,
+        Some(EventValue::Int(v)) => *v as i32,
+        Some(EventValue::Float(v)) => *v as i32,
+        _ => 0,
+    }
+}
+
+// --- Observer Implementation ---
 
 #[observer(all)]
-impl StatsCollector {
-    // Header (map name) – runs once at start
+impl MatchCollector {
     #[on_message]
     fn handle_header(&mut self, _ctx: &Context, header: &CDemoFileHeader) -> ObserverResult {
-        self.map_name = header.map_name.clone();
+        self.map_name = header.map_name.clone().unwrap_or_default();
         Ok(())
     }
 
-    // Single dispatcher – the safest way with the macro
     #[on_game_event]
-    fn on_game_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
-        match event.name().as_str() {
-            "round_start" => self.handle_round_start(ctx, event),
-            "round_end"   => self.handle_round_end(ctx, event),
-            "player_death" => self.handle_player_death(ctx, event),
-            "player_hurt"  => self.handle_player_hurt(ctx, event),
-            "player_spawn" => self.handle_player_spawn(ctx, event),
-            _ => Ok(()),
-        }
-    }
+    fn handle_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
+        match event.name().as_ref() {
+            "player_death" => {
+                // FIXED: Use helper instead of .as_u32()
+                let victim = extract_id(event.get_value("userid").ok());
+                let attacker = extract_id(event.get_value("attacker").ok());
+                let assister = extract_id(event.get_value("assister").ok());
 
-    fn handle_round_start(&mut self, _ctx: &Context, _event: &GameEvent) -> ObserverResult {
-        self.total_rounds += 1;
-        self.round_first_kill = true;
-        for stats in self.players.values_mut() {
-            stats.round_stats.push(RoundStat::default());
+                if attacker != 0 && attacker != victim {
+                    let p = self.get_player(ctx, attacker);
+                    p.kills += 1;
+                }
+                if victim != 0 {
+                    let p = self.get_player(ctx, victim);
+                    p.deaths += 1;
+                }
+                if assister != 0 {
+                    let p = self.get_player(ctx, assister);
+                    p.assists += 1;
+                }
+            },
+            "round_end" => {
+                let winner = extract_i32(event.get_value("winner").ok());
+                if winner == 2 { self.score_t += 1; }      // T Win
+                if winner == 3 { self.score_ct += 1; }     // CT Win
+            },
+            "round_mvp" => {
+                let userid = extract_id(event.get_value("userid").ok());
+                if userid != 0 {
+                    let p = self.get_player(ctx, userid);
+                    p.mvps += 1;
+                }
+            },
+            "player_hurt" => {
+                let attacker = extract_id(event.get_value("attacker").ok());
+                let dmg = extract_i32(event.get_value("dmg_health").ok());
+                
+                if attacker != 0 {
+                    let p = self.get_player(ctx, attacker);
+                    p.total_damage += dmg;
+                }
+            },
+            _ => {}
         }
         Ok(())
     }
 
-    fn handle_round_end(&mut self, _ctx: &Context, event: &GameEvent) -> ObserverResult {
-        if let Ok(val) = event.get_value("winner") {
-            if let Some(winner) = val.as_i32() {
-                if winner == 3 { self.score_ct += 1; }
-                else if winner == 2 { self.score_t += 1; }
-            }
-        }
+    fn get_player<'a>(&'a mut self, ctx: &Context, userid: u64) -> &'a mut PlayerStats {
+        self.players.entry(userid).or_insert_with(|| {
+            let mut name = format!("User {}", userid);
+            let mut steam_id = "BOT".to_string();
 
-        for stats in self.players.values_mut() {
-            if let Some(r) = stats.round_stats.last_mut() {
-                if r.kills > 1 {
-                    stats.multi_kills += 1;
+            if let Ok(player) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
+                if let Ok(field_val) = player.get_property_by_name("m_iszPlayerName") {
+                    if let FieldValue::String(n) = field_val {
+                        name = n.to_string();
+                    }
+                } else if let Ok(field_val) = player.get_property_by_name("m_szName") {
+                    if let FieldValue::String(n) = field_val {
+                        name = n.to_string();
+                    }
+                }
+                
+                if let Ok(field_val) = player.get_property_by_name("m_iSteamID") {
+                    match field_val {
+                        FieldValue::Signed32(s) => steam_id = s.to_string(),
+                        FieldValue::Unsigned64(s) => steam_id = s.to_string(),
+                        _ => {}
+                    }
                 }
             }
-        }
-        Ok(())
-    }
-
-    fn handle_player_death(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
-        let victim_id   = event.get_value("userid").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-        let attacker_id = event.get_value("attacker").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-        let assister_id = event.get_value("assister").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-
-        for &id in &[victim_id, attacker_id, assister_id] {
-            if id == 0 { continue; }
-            let stats = self.players.entry(id).or_default();
-            if !stats.name.is_empty() { continue; }
-            if let Some(pr) = ctx.entities().get_by_class_name("CCSPlayerResource") {
-                let idx = (id - 1) as usize;
-                stats.name = property!(pr, "m_szPlayerName.{:04}", idx)
-                    .unwrap_or_default()
-                    .to_string();
-                if let Some(sid) = try_property!(pr, "m_iSteamID.{:04}", idx) {
-                    stats.steam_id = sid.to_string();
-                }
-            }
-        }
-
-        if let Some(stats) = self.players.get_mut(&victim_id) {
-            stats.deaths += 1;
-            if let Some(r) = stats.round_stats.last_mut() { r.survived = false; }
-        }
-
-        if attacker_id != 0 && attacker_id != victim_id {
-            if let Some(stats) = self.players.get_mut(&attacker_id) {
-                stats.kills += 1;
-                if let Some(r) = stats.round_stats.last_mut() { r.kills += 1; }
-                if self.round_first_kill {
-                    stats.opening_kills += 1;
-                    self.round_first_kill = false;
-                }
-            }
-        }
-
-        if assister_id != 0 {
-            if let Some(stats) = self.players.get_mut(&assister_id) {
-                stats.assists += 1;
-                if let Some(r) = stats.round_stats.last_mut() { r.assists += 1; }
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_player_hurt(&mut self, _ctx: &Context, event: &GameEvent) -> ObserverResult {
-        let attacker = event.get_value("attacker").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-        let victim   = event.get_value("userid").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-        let dmg      = event.get_value("dmg_health").ok().and_then(|v| v.as_f32()).unwrap_or(0.0);
-
-        if attacker != 0 && attacker != victim {
-            if let Some(stats) = self.players.get_mut(&attacker) {
-                stats.total_damage += dmg;
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_player_spawn(&mut self, _ctx: &Context, event: &GameEvent) -> ObserverResult {
-        let id = event.get_value("userid").ok().and_then(|v| v.as_u32()).unwrap_or(0);
-        if id != 0 {
-            self.players.entry(id).or_default();
-        }
-        Ok(())
+            
+            PlayerStats { name, steam_id, ..Default::default() }
+        })
     }
 }
 
+// --- Internal Processing ---
 
-fn process_internal(path: &str, db_url: &str) -> Result<String, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
-    let mut parser = Parser::new(&mmap).map_err(|e| e.to_string())?;
+fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let file = std::fs::File::open(path)?;
+    let mmap = unsafe { Mmap::map(&file)? };
+    
+    let mut parser = Parser::new(&mmap)?;
+    let collector = parser.register_observer::<MatchCollector>();
+    parser.run_to_end()?;
 
-    let collector = parser.register_observer::<StatsCollector>();
-    parser.run_to_end().map_err(|e| e.to_string())?;
-
-    let coll = collector.borrow();
-    let map_name = if coll.map_name.is_empty() { "unknown".into() } else { coll.map_name.clone() };
-
-    let mut client = Client::connect(db_url, NoTls).map_err(|e| e.to_string())?;
-
-    // Insert match
+    let collector = collector.borrow();
+    
+    let mut client = Client::connect(db_url, NoTls)?;
+    
     let row = client.query_one(
-        "INSERT INTO matches (file_name, map_name, score_ct, score_t) VALUES ($1, $2, $3, $4) RETURNING id",
-        &[&path, &map_name, &coll.score_ct, &coll.score_t],
-    ).map_err(|e| e.to_string())?;
+        "INSERT INTO matches (map_name, score_ct, score_t, file_name) VALUES ($1, $2, $3, $4) RETURNING id",
+        &[&collector.map_name, &collector.score_ct, &collector.score_t, &path]
+    )?;
     let match_id: i32 = row.get(0);
 
-    let mut players_json = Vec::new();
-    let rounds = coll.total_rounds.max(1) as f32;
-
-    for stats in coll.players.values() {
-        let kpr = stats.kills as f32 / rounds;
-        let apr = stats.assists as f32 / rounds;
-        let adr = stats.total_damage / rounds;
-        let kast_rounds = stats.round_stats.iter().filter(|r| r.kills > 0 || r.assists > 0 || r.survived).count() as f32;
-        let kast = kast_rounds / rounds;
-        let impact = 1.0 + (stats.opening_kills as f32 * 0.5) + (stats.multi_kills as f32 * 0.3);
-
-        let rating = 0.0073 * kpr + 0.3591 * kast + 0.0032 * adr + 0.0073 * impact + 0.0032 * apr;
+    for stats in collector.players.values() {
+        if stats.steam_id == "BOT" { continue; }
+        
+        let rounds = (collector.score_ct + collector.score_t).max(1) as f32;
+        let adr = stats.total_damage as f32 / rounds;
+        
+        let kill_rating = stats.kills as f32 / rounds / 0.679;
+        let survival_rating = (rounds - stats.deaths as f32) / rounds / 0.317;
+        let rating = (kill_rating + 0.7 * survival_rating) / 2.7; 
 
         client.execute(
-            "INSERT INTO player_stats (match_id, steam_id, name, kills, deaths, hltv_rating, adr) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            &[&match_id, &stats.steam_id, &stats.name, &stats.kills, &stats.deaths, &rating, &adr],
-        ).map_err(|e| e.to_string())?;
-
-        players_json.push(serde_json::json!({
-            "name": stats.name,
-            "kills": stats.kills,
-            "deaths": stats.deaths,
-            "rating": rating,
-            "adr": adr,
-        }));
+            "INSERT INTO player_stats (match_id, steam_id, name, kills, deaths, adr, hltv_rating) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            &[&match_id, &stats.steam_id, &stats.name, &stats.kills, &stats.deaths, &adr, &rating]
+        )?;
     }
 
-    let result = serde_json::json!({
-        "status": "success",
-        "match_id": match_id,
-        "map": map_name,
-        "players": players_json
-    });
+    Ok(format!("{{ \"success\": true, \"match_id\": {} }}", match_id))
+}
 
-    Ok(result.to_string())
+// --- FFI Exports ---
+
+#[unsafe(no_mangle)]
+pub extern "C" fn analyze_demo(path_ptr: *const c_char, db_url_ptr: *const c_char) -> *mut c_char {
+    let c_path = unsafe { CStr::from_ptr(path_ptr) };
+    let c_db = unsafe { CStr::from_ptr(db_url_ptr) };
+    
+    let path = c_path.to_str().unwrap_or("");
+    let db = c_db.to_str().unwrap_or("");
+
+    let result = match process_demo(path, db) {
+        Ok(json) => json,
+        Err(e) => format!("{{ \"success\": false, \"error\": \"{}\" }}", e),
+    };
+
+    CString::new(result).unwrap().into_raw()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn free_string(s: *mut c_char) {
+    unsafe {
+        if !s.is_null() {
+            let _ = CString::from_raw(s);
+        }
+    }
 }

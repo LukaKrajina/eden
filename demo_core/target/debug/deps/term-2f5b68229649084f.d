@@ -1,0 +1,11 @@
+E:\Project\eden\demo_core\target\debug\deps\term-2f5b68229649084f.d: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\mod.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\searcher.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\compiled.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\names.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parm.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\win.rs
+
+E:\Project\eden\demo_core\target\debug\deps\libterm-2f5b68229649084f.rmeta: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\mod.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\searcher.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\compiled.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\names.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parm.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\win.rs
+
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\lib.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\mod.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\searcher.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\compiled.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parser\names.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\terminfo\parm.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\term-0.7.0\src\win.rs:

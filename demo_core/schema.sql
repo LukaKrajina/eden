@@ -1,13 +1,10 @@
--- init_db.sql
 CREATE TABLE IF NOT EXISTS matches (
     id SERIAL PRIMARY KEY,
-    file_name VARCHAR(255) UNIQUE NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
     map_name VARCHAR(64) NOT NULL,
-    date_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    duration_sec INT,
-    score_ct INT,
-    score_t INT,
-    winner VARCHAR(10) -- 'CT' or 'T'
+    score_ct INT DEFAULT 0,
+    score_t INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS player_stats (
@@ -17,10 +14,6 @@ CREATE TABLE IF NOT EXISTS player_stats (
     name VARCHAR(128) NOT NULL,
     kills INT DEFAULT 0,
     deaths INT DEFAULT 0,
-    assists INT DEFAULT 0,
-    mvps INT DEFAULT 0,
-    headshot_percentage FLOAT DEFAULT 0.0,
-    adr FLOAT DEFAULT 0.0, -- Average Damage per Round
     hltv_rating FLOAT DEFAULT 0.0,
-    team VARCHAR(10) -- 'CT' or 'T'
+    adr FLOAT DEFAULT 0.0
 );

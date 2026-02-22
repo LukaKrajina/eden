@@ -1,0 +1,20 @@
+E:\Project\eden\demo_core\target\debug\deps\snap-86480c0073a545e8.d: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\bytes.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\compress.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32_table.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\decompress.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\error.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\frame.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\raw.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\read.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\tag.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\write.rs E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/crc32_table.rs E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/tag.rs
+
+E:\Project\eden\demo_core\target\debug\deps\libsnap-86480c0073a545e8.rmeta: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\bytes.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\compress.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32_table.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\decompress.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\error.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\frame.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\raw.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\read.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\tag.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\write.rs E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/crc32_table.rs E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/tag.rs
+
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\lib.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\bytes.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\compress.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\crc32_table.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\decompress.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\error.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\frame.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\raw.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\read.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\tag.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\snap-1.1.1\src\write.rs:
+E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/crc32_table.rs:
+E:\Project\eden\demo_core\target\debug\build\snap-eb6a156441dcc572\out/tag.rs:
+
+# env-dep:OUT_DIR=E:\\Project\\eden\\demo_core\\target\\debug\\build\\snap-eb6a156441dcc572\\out
