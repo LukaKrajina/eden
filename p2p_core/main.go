@@ -61,7 +61,6 @@ var (
 	pubSub       *pubsub.PubSub
 	blockTopic   *pubsub.Topic
 
-	// Optimization: Reuse buffers to reduce GC pressure
 	bufferPool = sync.Pool{
 		New: func() interface{} {
 			return make([]byte, 4096) // Standard MTU is 1500, 4096 is safe
