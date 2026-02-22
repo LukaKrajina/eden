@@ -1,0 +1,11 @@
+E:\Project\eden\demo_core\target\debug\deps\prettytable-8c01956e871aecc2.d: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\cell.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\format.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\row.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\utils.rs
+
+E:\Project\eden\demo_core\target\debug\deps\libprettytable-8c01956e871aecc2.rlib: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\cell.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\format.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\row.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\utils.rs
+
+E:\Project\eden\demo_core\target\debug\deps\libprettytable-8c01956e871aecc2.rmeta: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\cell.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\format.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\row.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\utils.rs
+
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\lib.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\cell.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\format.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\row.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\prettytable-0.10.0\src\utils.rs:
