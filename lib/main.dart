@@ -4,13 +4,16 @@ import 'dart:convert'; // Added for JSON
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 import 'misc/pro_player_grid.dart';
 import 'package:eden/services/gsi_configurator.dart';
+import 'package:file_picker/file_picker.dart';
 import 'localization/lgpkg.dart';
 import 'services/steam_service.dart';
 import 'services/game_runner.dart';
 import 'services/gsi_server.dart';
 import 'services/p2p_service.dart';
+import 'services/demo/demo_service.dart';
 
 const Color kFaceitDarkBg = Color(0xFF121212);
 const Color kFaceitSurface = Color(0xFF1F1F1F);
@@ -22,6 +25,7 @@ const Color kFaceitBorder = Color(0xFF333333);
 // --- Global Settings ---
 String g_CS2Path = "";
 final ValueNotifier<String> appLanguageNotifier = ValueNotifier("English");
+late DemoService demo;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,12 +38,14 @@ void main() async {
 
   final p2p = P2PService();
   final gsi = GsiServer();
+  demo = DemoService();
   gsi.startServer();
 
   runApp(MyApp(
     steam: steam, 
     gsiServer: gsi,
     p2pService: p2p,
+    demoService: demo,
   ));
 }
 
@@ -75,7 +81,7 @@ class MyApp extends StatelessWidget {
   final SteamService steam;
   final GsiServer gsiServer;
   final P2PService p2pService;
-  // Lgpkg instance for the title, dynamically updated via Builder
+  final DemoService demoService;
   final Lgpkg _lgpkg = Lgpkg(); 
 
   MyApp({
@@ -83,6 +89,7 @@ class MyApp extends StatelessWidget {
     required this.steam, 
     required this.gsiServer,
     required this.p2pService, 
+    required this.demoService, 
   });
 
   @override
@@ -113,6 +120,7 @@ class MyApp extends StatelessWidget {
             steam: steam, 
             gsiServer: gsiServer, 
             p2pService: p2pService, 
+            demoService: demoService,
           ),
         );
       },
@@ -135,12 +143,14 @@ class ServerControlPanel extends StatefulWidget {
   final SteamService steam;
   final GsiServer gsiServer;
   final P2PService p2pService;
+  final DemoService demoService;
 
   const ServerControlPanel({
     super.key,
     required this.steam, 
     required this.gsiServer, 
     required this.p2pService, 
+    required this.demoService,
   });
 
   @override
@@ -191,6 +201,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     "de_dust2", "de_mirage", "de_inferno", "de_nuke", 
     "de_overpass", "de_vertigo", "de_ancient", "de_anubis"
   ];
+
+  List<dynamic> _matchHistory = [];
+  List<dynamic> _selectedMatchStats = [];
+  int? _selectedMatchId;
+  bool _isLoadingStats = false;
 
   @override
   void initState() {
@@ -524,6 +539,100 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     });
   }
 
+
+  // --- Demo Analysis Logic ---
+
+  Future<void> _uploadDemo() async {
+  FilePickerResult? result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['dem'],
+  );
+
+  if (result != null) {
+    String path = result.files.single.path!;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(
+            color: kFaceitOrange,
+            backgroundColor: Colors.black26,
+          ),
+        );
+      },
+    );
+
+    try {
+      final res = await demo.processDemo(path);
+
+      if (mounted) {
+        Navigator.of(context).pop(); 
+      }
+
+      if (res.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Colors.green,
+              content: Text(
+                "MATCH ANALYZED", 
+                style: TextStyle(fontFamily: "Oswald", fontWeight: FontWeight.bold)
+              ),
+              duration: Duration(seconds: 2),
+            )
+          );
+          setState(() {
+            _currentView = 3;
+          });
+        }
+      } else {
+        if (mounted) {
+          _showErrorDialog("Analysis Failed", res.error ?? "Unknown error");
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      if (mounted) _showErrorDialog("Critical Error", e.toString());
+    }
+  }
+}
+
+  Future<void> _fetchMatches() async {
+      try {
+        final response = await http.get(Uri.parse('http://localhost:3000/recent-matches'));
+        if (response.statusCode == 200) {
+          setState(() {
+            _matchHistory = jsonDecode(response.body);
+          });
+        }
+      } catch (e) {
+        print("Error fetching matches: $e");
+    }
+  }
+
+  Future<void> _fetchMatchDetails(int id) async {
+    setState(() {
+      _selectedMatchId = id;
+      _isLoadingStats = true;
+    });
+
+    try {
+      final response = await http.get(Uri.parse('http://localhost:3000/match/$id'));
+      if (response.statusCode == 200) {
+        setState(() {
+          _selectedMatchStats = jsonDecode(response.body);
+        });
+      }
+    } catch (e) {
+      print("Error fetching details: $e");
+    } finally {
+      setState(() => _isLoadingStats = false);
+    }
+  }
+
+
   // --- Core Engine Logic ---
 
   Future<void> _launchAntiCheatEngine() async {
@@ -651,18 +760,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.all(24.0),
-                        child: _currentView == 1
-                          ? _buildFriendList()
-                          : _currentView == 2
-                              ? const ProSettingsGrid() 
-                              : Row( 
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(flex: 3, child: _buildMatchLobby()),
-                                    const SizedBox(width: 24),
-                                    Expanded(flex: 1, child: _buildRightPanel()),
-                                  ],
-                                ),
+                        child: _buildMainContent(),
                       ),
                     ),
                   ],
@@ -680,6 +778,28 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
+  Widget _buildMainContent() {
+    switch (_currentView) {
+      case 0:
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: _buildMatchLobby()),
+            const SizedBox(width: 24),
+            Expanded(flex: 1, child: _buildRightPanel()),
+          ],
+        );
+      case 1:
+        return _buildFriendList();
+      case 2:
+        return const ProSettingsGrid();
+      case 3:
+        return _buildStatsView();
+      default:
+        return Container();
+    }
+  }
+
   Widget _buildSidebar() {
     return Container(
       width: 70, color: kFaceitSurface,
@@ -690,8 +810,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           const SizedBox(height: 30),
           _buildSideIcon(Icons.sports_esports, _currentView == 0, onTap: () => setState(() => _currentView = 0,)),
           _buildSideIcon(Icons.people, _currentView == 1, onTap: () => setState(() => _currentView = 1)),
-          _buildSideIcon(Icons.bar_chart, false),
           _buildSideIcon(Icons.people, _currentView == 2, onTap: () => setState(() => _currentView = 2)),
+          _buildSideIcon(Icons.bar_chart, _currentView == 3, onTap: () {
+            setState(() => _currentView = 3);
+            _fetchMatches();
+          }),
           const Spacer(),
           _buildSideIcon(Icons.settings, false, onTap: _showSettingsWindow),
           const SizedBox(height: 20),
@@ -1081,6 +1204,230 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         }
       )
     );
+  }
+
+  // --- Demo Stats View ---
+  Widget _buildStatsView() {
+    return Row(
+      children: [
+        Container(
+          width: 300,
+          decoration: BoxDecoration(
+            color: kFaceitSurface,
+            border: Border.all(color: kFaceitBorder),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_lgpkg.get("MATCH HISTORY"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 16, color: kFaceitOrange),
+                      onPressed: _fetchMatches,
+                    )
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: kFaceitBorder),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _matchHistory.length,
+                  itemBuilder: (ctx, i) {
+                    final match = _matchHistory[i];
+                    bool isSelected = match['id'] == _selectedMatchId;
+                    return InkWell(
+                      onTap: () => _fetchMatchDetails(match['id']),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected ? kFaceitSurface.withOpacity(0.8) : null,
+                          border: Border(left: BorderSide(color: isSelected ? kFaceitOrange : Colors.transparent, width: 3)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40, height: 40,
+                              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(4)),
+                              alignment: Alignment.center,
+                              child: Text(match['map'].toString().substring(3, 5).toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(match['map'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                const SizedBox(height: 4),
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      TextSpan(text: "${match['score_ct']}", style: const TextStyle(color: Color(0xFF5D79AE), fontWeight: FontWeight.bold)),
+                                      const TextSpan(text: " : ", style: TextStyle(color: Colors.grey)),
+                                      TextSpan(text: "${match['score_t']}", style: const TextStyle(color: Color(0xFFDE9B35), fontWeight: FontWeight.bold)),
+                                    ]
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            Text(match['date'].toString().split(' ')[0], style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kFaceitOrange,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text("ANALYZE NEW DEMO"),
+                    onPressed: () async {
+                      await _uploadDemo();
+                      _fetchMatches();
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        const SizedBox(width: 24),
+        
+        Expanded(
+          child: _selectedMatchId == null 
+            ? _buildEmptyStatsState()
+            : _buildScoreboard(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyStatsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.analytics_outlined, size: 64, color: kFaceitTextDim),
+          const SizedBox(height: 16),
+          Text("SELECT A MATCH", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5), fontSize: 24, fontFamily: "Oswald")),
+          const SizedBox(height: 8),
+          const Text("Select a match from the left to view detailed analytics", style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScoreboard() {
+    if (_isLoadingStats) {
+      return const Center(child: CircularProgressIndicator(color: kFaceitOrange));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("SCOREBOARD", style: TextStyle(color: Colors.white, fontSize: 24, fontFamily: "Oswald")),
+            Row(
+              children: [
+                OutlinedButton(onPressed: (){}, child: const Text("DOWNLOAD DEMO")),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: kFaceitSurface),
+                  onPressed: (){}, 
+                  child: const Text("WATCH ROOM")
+                ),
+              ],
+            )
+          ],
+        ),
+        const SizedBox(height: 20),
+        
+        // Table Header
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          color: kFaceitSurface,
+          child: const Row(
+            children: [
+              Expanded(flex: 3, child: Text("PLAYER", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text("KILLS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text("DEATHS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text("K/D", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text("ADR", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text("RATING", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        ),
+        
+        // Table Rows
+        Expanded(
+          child: ListView.builder(
+            itemCount: _selectedMatchStats.length,
+            itemBuilder: (ctx, i) {
+              final p = _selectedMatchStats[i];
+              double kd = (p['kills'] / (p['deaths'] == 0 ? 1 : p['deaths']));
+              bool positive = kd >= 1.0;
+
+              return Container(
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kFaceitBorder))),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3, 
+                      child: Row(
+                        children: [
+                          CircleAvatar(radius: 12, backgroundColor: Colors.grey[800], child: Text(p['name'][0], style: const TextStyle(fontSize: 10, color: Colors.white))),
+                          const SizedBox(width: 10),
+                          Text(p['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    Expanded(child: Text("${p['kills']}", style: const TextStyle(color: Colors.white))),
+                    Expanded(child: Text("${p['deaths']}", style: const TextStyle(color: Colors.white))),
+                    Expanded(child: Text(kd.toStringAsFixed(2), style: TextStyle(color: positive ? Colors.green : Colors.red))),
+                    Expanded(child: Text("${p['adr'].toStringAsFixed(1)}", style: const TextStyle(color: Colors.white))),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _getRatingColor(p['rating']),
+                          borderRadius: BorderRadius.circular(4)
+                        ),
+                        child: Text(
+                          "${p['rating'].toStringAsFixed(2)}", 
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getRatingColor(double r) {
+    if (r >= 1.2) return const Color(0xFF2ECC71);
+    if (r >= 1.0) return const Color(0xFFF1C40F);
+    return const Color(0xFFE74C3C);
   }
 }
 

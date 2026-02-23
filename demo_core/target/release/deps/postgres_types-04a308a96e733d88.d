@@ -1,0 +1,11 @@
+E:\Project\eden\demo_core\target\release\deps\postgres_types-04a308a96e733d88.d: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\pg_lsn.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\private.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\special.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\type_gen.rs
+
+E:\Project\eden\demo_core\target\release\deps\libpostgres_types-04a308a96e733d88.rlib: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\pg_lsn.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\private.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\special.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\type_gen.rs
+
+E:\Project\eden\demo_core\target\release\deps\libpostgres_types-04a308a96e733d88.rmeta: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\lib.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\pg_lsn.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\private.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\special.rs C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\type_gen.rs
+
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\lib.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\pg_lsn.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\private.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\special.rs:
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\postgres-types-0.2.12\src\type_gen.rs:

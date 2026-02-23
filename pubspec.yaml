@@ -12,6 +12,7 @@ dependencies:
   steamworks: ^0.4.8
   shelf: ^1.4.2
   shelf_router: ^1.1.0
+  shelf_cors_headers: ^0.1.5
   path: ^1.9.1
   win32: ^5.15.0
   path_provider: ^2.1.5
@@ -21,6 +22,7 @@ dependencies:
   window_manager: ^0.5.1
   rxdart: ^0.28.0
   postgres: ^3.5.9
+  file_picker: ^10.3.10
   
 dev_dependencies:
   flutter_test:

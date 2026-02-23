@@ -1,60 +1,68 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_cors/shelf_cors.dart';
+import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 
 class ApiServer {
-  final String dbHost = 'localhost';
-  final String dbName = 'eden_db';
-  final String dbUser = 'postgres';
-  final String dbPass = 'password';
+  late Connection _connection;
+  bool _isRunning = false;
 
   Future<void> start() async {
-    final handler = const Pipeline()
-      .addMiddleware(corsHeaders())
-      .addHandler(_handleRequest);
+    if (_isRunning) return;
 
-    await shelf_io.serve(handler, 'localhost', 3000);
-    print('API Server running on localhost:3000');
-  }
-
-  Future<Response> _handleRequest(Request request) async {
-    final conn = await Connection.open(
-      Endpoint(host: dbHost, database: dbName, username: dbUser, password: dbPass),
+    _connection = await Connection.open(
+      Endpoint(host: 'localhost', database: 'eden_db', username: 'postgres', password: 'password'),
       settings: ConnectionSettings(sslMode: SslMode.disable),
     );
 
-    try {
-      // Endpoint: /matches
-      if (request.url.path == 'matches') {
-        final res = await conn.execute("SELECT id, map_name, score_ct, score_t, file_name FROM matches ORDER BY id DESC LIMIT 10");
-        final data = res.map((r) => {
-          'id': r[0], 'map': r[1], 'ct': r[2], 't': r[3], 'date': "Today" 
-        }).toList();
-        return Response.ok(jsonEncode(data), headers: {'content-type': 'application/json'});
-      }
+    final handler = const Pipeline()
+        .addMiddleware(corsHeaders())
+        .addHandler(_handleRequest);
+
+    final server = await shelf_io.serve(handler, 'localhost', 3000);
+    print('[API] Serving at http://localhost:3000');
+    _isRunning = true;
+  }
+
+  Future<Response> _handleRequest(Request request) async {
+    if (request.url.path == 'recent-matches') {
+      final results = await _connection.execute(
+        "SELECT id, map_name, score_ct, score_t, played_at FROM matches ORDER BY played_at DESC LIMIT 10"
+      );
       
-      // Endpoint: /match/<id>
-      if (request.url.pathSegments.length == 2 && request.url.pathSegments[0] == 'match') {
-        final id = int.tryParse(request.url.pathSegments[1]);
-        if (id != null) {
-          final res = await conn.execute(
-            Sql.named("SELECT name, kills, deaths, adr, hltv_rating FROM player_stats WHERE match_id = @id ORDER BY hltv_rating DESC"),
-            parameters: {'id': id}
-          );
-          final data = res.map((r) => {
-            'name': r[0], 'kills': r[1], 'deaths': r[2], 'adr': r[3], 'rating': r[4]
-          }).toList();
-          return Response.ok(jsonEncode(data), headers: {'content-type': 'application/json'});
-        }
-      }
-      
-      return Response.notFound('Not Found');
-    } catch (e) {
-      return Response.internalServerError(body: "DB Error: $e");
-    } finally {
-      await conn.close();
+      final matches = results.map((row) => {
+        'id': row[0],
+        'map': row[1],
+        'score_ct': row[2],
+        'score_t': row[3],
+        'date': row[4].toString()
+      }).toList();
+
+      return Response.ok(jsonEncode(matches), headers: {'content-type': 'application/json'});
     }
+
+    if (request.url.path.startsWith('match/')) {
+      final id = int.tryParse(request.url.pathSegments.last);
+      if (id != null) {
+        final players = await _connection.execute(
+          Sql.named("SELECT name, kills, deaths, hltv_rating, adr FROM player_stats WHERE match_id = @id ORDER BY hltv_rating DESC"),
+          parameters: {'id': id}
+        );
+
+        final stats = players.map((row) => {
+          'name': row[0],
+          'kills': row[1],
+          'deaths': row[2],
+          'rating': row[3],
+          'adr': row[4]
+        }).toList();
+
+        return Response.ok(jsonEncode(stats), headers: {'content-type': 'application/json'});
+      }
+    }
+
+    return Response.notFound('Endpoint not found');
   }
 }
