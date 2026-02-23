@@ -58,11 +58,11 @@ class ApiServer {
         );
 
         final stats = players.map((row) => {
-          'name': row[0],
-          'kills': row[1],
-          'deaths': row[2],
-          'rating': row[3],
-          'adr': row[4]
+          'name': row[0].toString(),
+          'kills': int.parse(row[1].toString()),
+          'deaths': int.parse(row[2].toString()),
+          'rating': double.tryParse(row[3].toString()) ?? 0.0,
+          'adr': double.tryParse(row[4].toString()) ?? 0.0
         }).toList();
 
         return Response.ok(jsonEncode(stats), headers: {'content-type': 'application/json'});

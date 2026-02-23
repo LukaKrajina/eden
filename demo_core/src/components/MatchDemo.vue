@@ -113,8 +113,9 @@ const formatDate = (d: string) => new Date(d).toLocaleDateString();
 const getKdColor = (k: number, d: number) => (k/d >= 1 ? 'text-green' : 'text-red');
 
 const getRatingClass = (r: number) => {
-  if (r >= 1.2) return 'rating-god';
-  if (r >= 1.0) return 'rating-good';
+  const val = Number(r) || 0;
+  if (val >= 1.2) return 'rating-god';
+  if (val >= 1.0) return 'rating-good';
   return 'rating-bad';
 };
 </script>
