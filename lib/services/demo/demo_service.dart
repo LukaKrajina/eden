@@ -21,7 +21,8 @@ class DemoService {
   late FreeStringDart _freeString;
   bool _isLoaded = false;
 
-  final String dbUrl = "postgresql://postgres:114357%40hJ@localhost:5432/eden_db";
+  String _dbUser = "postgres";
+  String _dbPassword = "password";
 
   DemoService() {
     try {
@@ -41,12 +42,22 @@ class DemoService {
     }
   }
 
+  void setDatabaseUser(String user) {
+    _dbUser = user;
+  }
+
+  void setDatabasePassword(String password) {
+    _dbPassword = password;
+  }
+
   Future<DemoResult> processDemo(String filePath) async {
     late Pointer<Utf8>? resultPtr;
     if (!_isLoaded) return DemoResult(success: false, error: "Library not loaded");
 
     return Future<DemoResult>.sync(() {
       final pathPtr = filePath.toNativeUtf8();
+      final encodedPassword = _dbPassword.replaceAll('@', '%40');
+      final dbUrl = "postgresql://$_dbUser:$encodedPassword@localhost:5432/eden_db";
       final dbPtr = dbUrl.toNativeUtf8();
 
       try {

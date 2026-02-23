@@ -9,21 +9,27 @@ class ApiServer {
   late Connection _connection;
   bool _isRunning = false;
 
-  Future<void> start() async {
+  Future<void> start(String dbUser, String dbPassword) async {
     if (_isRunning) return;
 
-    _connection = await Connection.open(
-      Endpoint(host: 'localhost', database: 'eden_db', username: 'postgres', password: '114357@hJ'),
-      settings: ConnectionSettings(sslMode: SslMode.disable),
-    );
+    try {
+      _connection = await Connection.open(
+        Endpoint(host: 'localhost', database: 'eden_db', username: dbUser, password: dbPassword),
+        settings: ConnectionSettings(sslMode: SslMode.disable),
+      );
 
-    final handler = const Pipeline()
-        .addMiddleware(corsHeaders())
-        .addHandler(_handleRequest);
+      final handler = const Pipeline()
+          .addMiddleware(corsHeaders())
+          .addHandler(_handleRequest);
 
-    final server = await shelf_io.serve(handler, 'localhost', 3000);
-    print('[API] Serving at http://localhost:3000');
-    _isRunning = true;
+      final server = await shelf_io.serve(handler, '0.0.0.0', 3000);
+      print('[API] Serving at http://0.0.0.0:3000');
+      _isRunning = true;
+    } catch (e) {
+        print("[API] Failed to start server or connect to DB: $e");
+        _isRunning = false;
+        throw e; 
+    }
   }
 
   Future<Response> _handleRequest(Request request) async {

@@ -25,8 +25,11 @@ const Color kFaceitBorder = Color(0xFF333333);
 
 // --- Global Settings ---
 String g_CS2Path = "";
+String g_dbUser = "postgres";
+String g_DbPassword = "password";
 final ValueNotifier<String> appLanguageNotifier = ValueNotifier("English");
 late DemoService demo;
+final ApiServer apiServer = ApiServer();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,8 +43,14 @@ void main() async {
   final p2p = P2PService();
   final gsi = GsiServer();
   demo = DemoService();
-  final apiServer = ApiServer();
-  await apiServer.start();
+  demo.setDatabaseUser(g_dbUser);
+  demo.setDatabasePassword(g_DbPassword);
+
+  try{
+    await apiServer.start(g_dbUser, g_DbPassword);
+  } catch (e) {
+    print("[Main] Warning: API Server failed to start: $e");
+  }
   gsi.startServer();
 
   runApp(MyApp(
@@ -60,6 +69,8 @@ Future<void> _loadSettings() async {
       final content = await file.readAsString();
       final map = jsonDecode(content);
       g_CS2Path = map['cs2_path'] ?? "";
+      g_dbUser = map['db_user'] ?? "postgres";
+      g_DbPassword = map['db_password'] ?? "password";
       appLanguageNotifier.value = map['language'] ?? "English";
     }
   } catch (e) {
@@ -72,6 +83,8 @@ Future<void> _saveSettings() async {
     final file = File('eden_config.json');
     final map = {
       'cs2_path': g_CS2Path,
+      'db_user': g_dbUser,
+      'db_password': g_DbPassword,
       'language': appLanguageNotifier.value,
     };
     await file.writeAsString(jsonEncode(map));
@@ -97,7 +110,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to language changes to rebuild the whole app (updates Title & Directionality if needed)
     return ValueListenableBuilder<String>(
       valueListenable: appLanguageNotifier,
       builder: (context, language, child) {
@@ -168,6 +180,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   // Controllers
   final TextEditingController _joinController = TextEditingController();
   final TextEditingController _cs2PathController = TextEditingController();
+  final TextEditingController _dbUserController = TextEditingController();
+  final TextEditingController _dbPassController = TextEditingController();
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
 
@@ -213,12 +227,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   @override
   void initState() {
     super.initState();
-    // Sync local Lgpkg with global setting
     _lgpkg.currentLanguage = appLanguageNotifier.value;
     
     _status = _lgpkg.get("WaitingAction");
     _nameController = TextEditingController(text: widget.steam.getPlayerName());
-    _cs2PathController.text = g_CS2Path; // Load global path into controller
+    _cs2PathController.text = g_CS2Path;
+    _dbUserController.text = g_dbUser;
+    _dbPassController.text = g_DbPassword;
 
     _scoreAcquirer();
     _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
@@ -236,6 +251,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     }
     _joinController.dispose();
     _cs2PathController.dispose();
+    _dbUserController.dispose();
+    _dbPassController.dispose();
     _friendCodeController.dispose();
     _nameController.dispose();
     super.dispose();
@@ -604,7 +621,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   Future<void> _fetchMatches() async {
       try {
-        final response = await http.get(Uri.parse('http://localhost:3000/recent-matches'));
+        final response = await http.get(Uri.parse('http://127.0.0.1:3000/recent-matches'));
+        print("API Response: ${response.statusCode} - ${response.body}");
         if (response.statusCode == 200) {
           setState(() {
             _matchHistory = jsonDecode(response.body);
@@ -622,7 +640,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     });
 
     try {
-      final response = await http.get(Uri.parse('http://localhost:3000/match/$id'));
+      final response = await http.get(Uri.parse('http://127.0.0.1:3000/match/$id'));
+      print("API Response: ${response.statusCode} - ${response.body}");
       if (response.statusCode == 200) {
         setState(() {
           _selectedMatchStats = jsonDecode(response.body);
@@ -1116,6 +1135,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   void _showSettingsWindow() {
     // Temporary state for the dialog
     String tempLanguage = appLanguageNotifier.value;
+    _dbUserController.text = g_dbUser;
+    _dbPassController.text = g_DbPassword;
     
     showDialog(
       context: context, 
@@ -1145,7 +1166,32 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                     ),
                   ), 
                   const SizedBox(height: 20),
-                  
+
+                  // DB User Input
+                  const Text("Database User", style: TextStyle(color: Colors.grey)),
+                  TextField(
+                    controller: _dbUserController, 
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // DB Password Input
+                  const Text("Database Password", style: TextStyle(color: Colors.grey)), 
+                  TextField(
+                    controller: _dbPassController, 
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                    ),
+                  ), 
+                  const SizedBox(height: 20),
+
                   // Language Selection
                   Text("Language / 语言", style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 5),
@@ -1185,16 +1231,26 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                         onPressed: (){ 
                           // 1. Update Global Settings
                           g_CS2Path = _cs2PathController.text;
+                          g_dbUser = _dbUserController.text;
+                          g_DbPassword = _dbPassController.text;
                           appLanguageNotifier.value = tempLanguage;
                           
-                          // 2. Save to File
+                          // 2. Update Runtime Services
+                          widget.demoService.setDatabaseUser(g_dbUser);
+                          widget.demoService.setDatabasePassword(g_DbPassword);
+
+                          // 3. Save to File
                           _saveSettings();
                           
-                          // 3. Close Dialog
+                          // 4. Close Dialog
                           Navigator.pop(ctx); 
                           
-                          // 4. Force UI Refresh (Language change handles itself via Notifier)
+                          // 5. Force UI Refresh (Language change handles itself via Notifier)
                           setState(() {});
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Settings Saved. Restart app for DB changes to fully take effect."))
+                          );
                         }, 
                         child: const Text("SUBMIT")
                       ),

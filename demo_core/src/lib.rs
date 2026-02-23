@@ -59,7 +59,6 @@ impl MatchCollector {
     fn handle_event(&mut self, ctx: &Context, event: &GameEvent) -> ObserverResult {
         match event.name().as_ref() {
             "player_death" => {
-                // FIXED: Use helper instead of .as_u32()
                 let victim = extract_id(event.get_value("userid").ok());
                 let attacker = extract_id(event.get_value("attacker").ok());
                 let assister = extract_id(event.get_value("assister").ok());
@@ -172,7 +171,6 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     Ok(format!("{{ \"success\": true, \"match_id\": {} }}", match_id))
 }
 
-// --- FFI Exports ---
 
 #[unsafe(no_mangle)]
 pub extern "C" fn analyze_demo(path_ptr: *const c_char, db_url_ptr: *const c_char) -> *mut c_char {
