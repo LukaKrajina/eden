@@ -13,7 +13,7 @@ class ApiServer {
     if (_isRunning) return;
 
     _connection = await Connection.open(
-      Endpoint(host: 'localhost', database: 'eden_db', username: 'postgres', password: 'password'),
+      Endpoint(host: 'localhost', database: 'eden_db', username: 'postgres', password: '114357@hJ'),
       settings: ConnectionSettings(sslMode: SslMode.disable),
     );
 

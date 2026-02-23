@@ -4,6 +4,8 @@ import 'package:ffi/ffi.dart';
 
 typedef AnalyzeDemoC = Pointer<Utf8> Function(Pointer<Utf8> path, Pointer<Utf8> dbUrl);
 typedef AnalyzeDemoDart = Pointer<Utf8> Function(Pointer<Utf8> path, Pointer<Utf8> dbUrl);
+typedef FreeStringC = Void Function(Pointer<Utf8> str);
+typedef FreeStringDart = void Function(Pointer<Utf8> str);
 
 class DemoResult {
   final bool success;
@@ -16,9 +18,10 @@ class DemoResult {
 class DemoService {
   late DynamicLibrary _lib;
   late AnalyzeDemoDart _analyzeDemo;
+  late FreeStringDart _freeString;
   bool _isLoaded = false;
 
-  final String dbUrl = "postgresql://postgres:114357@hJ@localhost:5432/eden_db";
+  final String dbUrl = "postgresql://postgres:114357%40hJ@localhost:5432/eden_db";
 
   DemoService() {
     try {
@@ -29,6 +32,9 @@ class DemoService {
       }
       
       _analyzeDemo = _lib.lookupFunction<AnalyzeDemoC, AnalyzeDemoDart>('analyze_demo');
+      try {
+        _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('free_string');
+      } catch (e) { print("Warning: free_string not found"); }
       _isLoaded = true;
     } catch (e) {
       print("[DemoService] Failed to load library: $e");
@@ -36,6 +42,7 @@ class DemoService {
   }
 
   Future<DemoResult> processDemo(String filePath) async {
+    late Pointer<Utf8>? resultPtr;
     if (!_isLoaded) return DemoResult(success: false, error: "Library not loaded");
 
     return Future<DemoResult>.sync(() {
@@ -43,13 +50,10 @@ class DemoService {
       final dbPtr = dbUrl.toNativeUtf8();
 
       try {
-        final resultPtr = _analyzeDemo(pathPtr, dbPtr);
-        final resultJson = resultPtr.toDartString();
+        resultPtr = _analyzeDemo(pathPtr, dbPtr);
+        final resultJson = resultPtr?.toDartString();
         
-        // Note: In production, you should expose a Rust 'free_string' function 
-        // to free resultPtr to avoid memory leaks.
-        
-        if (resultJson.contains('"error"')) {
+        if (resultJson!.contains('"error"')) {
           return DemoResult(success: false, error: resultJson);
         }
         return DemoResult(success: true, json: resultJson);
@@ -58,6 +62,7 @@ class DemoService {
       } finally {
         calloc.free(pathPtr);
         calloc.free(dbPtr);
+        if (resultPtr != null) _freeString(resultPtr!);
       }
     });
   }

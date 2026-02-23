@@ -14,6 +14,7 @@ import 'services/game_runner.dart';
 import 'services/gsi_server.dart';
 import 'services/p2p_service.dart';
 import 'services/demo/demo_service.dart';
+import 'services/demo/api_service.dart';
 
 const Color kFaceitDarkBg = Color(0xFF121212);
 const Color kFaceitSurface = Color(0xFF1F1F1F);
@@ -39,6 +40,8 @@ void main() async {
   final p2p = P2PService();
   final gsi = GsiServer();
   demo = DemoService();
+  final apiServer = ApiServer();
+  await apiServer.start();
   gsi.startServer();
 
   runApp(MyApp(
