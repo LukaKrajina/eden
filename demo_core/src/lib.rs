@@ -38,7 +38,6 @@ fn extract_id(val: Option<&EventValue>) -> u64 {
     }
 }
 
-// FIX #1: Handle Byte Extraction for "winner" field
 fn extract_i32(val: Option<&EventValue>) -> i32 {
     match val {
         Some(EventValue::Int(v)) => *v,
@@ -136,8 +135,6 @@ impl MatchCollector {
         0
     }
 
-    // FIX #3: Entity Resolution Overhaul
-    // Instead of casting userid -> class_id, we look for CCSPlayerController
     fn get_player<'a>(&'a mut self, ctx: &Context, userid: u64) -> &'a mut PlayerStats {
         self.players.entry(userid).or_insert_with(|| {
             let mut name = format!("User {}", userid);
@@ -146,11 +143,9 @@ impl MatchCollector {
 
             if let Ok(entity) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
                 
-                // Verify this is actually a player controller!
-                if let Some(class) = entity.class() {
-                    if class.name == "CCSPlayerController" {
-                        
-                        // Extract Name
+                let class = entity.class();
+                if class.name() == "CCSPlayerController" {
+                     // Extract Name
                         if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
                             name = n.to_string();
                         } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_szName") {
@@ -171,15 +166,17 @@ impl MatchCollector {
                             team_num = *t;
                         }
                     }
-                }
             }
-            
+
+            if steam_id == "BOT" {
+                steam_id = format!("BOT_{}", name);
+            }
+
             PlayerStats { name, steam_id, team_num, ..Default::default() }
         })
     }
 }
 
-// --- Internal Processing ---
 
 fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let file = std::fs::File::open(path)?;
@@ -193,8 +190,6 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     
     let mut client = Client::connect(db_url, NoTls)?;
     
-    // FIX #4: Transactional Persistence
-    // We start a transaction to ensure either ALL data saves, or NONE of it does.
     let mut transaction = client.transaction()?;
 
     let row = transaction.query_one(
@@ -207,6 +202,7 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     let total_rounds = (collector.score_ct + collector.score_t).max(1) as f32;
 
     for stats in collector.players.values() {
+
         if stats.steam_id == "BOT" { continue; }
         
         // Basic calculations

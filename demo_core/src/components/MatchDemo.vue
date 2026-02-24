@@ -9,9 +9,9 @@
         :class="{ active: selectedMatchId === match.id }"
         @click="selectMatch(match.id)"
       >
-        <div class="map-badge" :class="match.map"></div>
+        <div class="map-badge" :class="cleanMapName(match.map)"></div>
         <div class="match-info">
-          <div class="match-map">{{ match.map }}</div>
+          <div class="match-map">{{ cleanMapName(match.map) }}</div>
           <div class="match-score">
             <span class="ct">{{ match.score_ct }}</span> - <span class="t">{{ match.score_t }}</span>
           </div>
@@ -91,7 +91,6 @@ const matches = ref<Match[]>([]);
 const matchStats = ref<PlayerStat[]>([]);
 const selectedMatchId = ref<number | null>(null);
 
-// Fetch Match List
 onMounted(async () => {
   try {
     const res = await fetch('http://localhost:3000/recent-matches');
@@ -101,27 +100,40 @@ onMounted(async () => {
   }
 });
 
-// Fetch Details
 const selectMatch = async (id: number) => {
   selectedMatchId.value = id;
-  const res = await fetch(`http://localhost:3000/match/${id}`);
-  matchStats.value = await res.json();
+  try {
+    const res = await fetch(`http://localhost:3000/match/${id}`);
+    matchStats.value = await res.json();
+  } catch (e) {
+    console.error("Failed to load match details", e);
+  }
 };
 
-// Utils
+// Helpers
 const formatDate = (d: string) => new Date(d).toLocaleDateString();
+
+// lib.rs stores map names as raw strings (e.g., "maps/de_mirage.vpk")
+// We strip path/extension for UI display
+const cleanMapName = (map: string) => {
+  return map.replace(/^maps\//, '').replace(/\.vpk$/, '');
+};
+
 const getKdColor = (k: number, d: number) => (k/d >= 1 ? 'text-green' : 'text-red');
 
+// Rating 2.0 Scaling
 const getRatingClass = (r: number) => {
   const val = Number(r) || 0;
-  if (val >= 1.2) return 'rating-god';
-  if (val >= 1.0) return 'rating-good';
+  if (val >= 1.20) return 'rating-god';
+  if (val >= 1.05) return 'rating-good';
   return 'rating-bad';
 };
 </script>
 
 <style scoped>
+
 /* Faceit/Eden Theme Variables */
+
 :root {
   --bg-dark: #121212;
   --bg-panel: #1F1F1F;
@@ -187,6 +199,11 @@ h1 { font-family: 'Oswald'; font-size: 32px; margin: 0; }
   background: #FF5500; color: white; border: none;
   padding: 10px 20px; font-weight: bold; cursor: pointer;
   border-radius: 2px;
+}
+.btn-outline {
+  background: transparent; color: #CCC; border: 1px solid #444;
+  padding: 10px 20px; font-weight: bold; cursor: pointer;
+  border-radius: 2px; margin-left: 10px;
 }
 
 .data-table {

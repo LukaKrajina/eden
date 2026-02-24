@@ -34,38 +34,46 @@ class ApiServer {
 
   Future<Response> _handleRequest(Request request) async {
     if (request.url.path == 'recent-matches') {
-      final results = await _connection.execute(
-        "SELECT id, map_name, score_ct, score_t, played_at FROM matches ORDER BY played_at DESC LIMIT 10"
-      );
-      
-      final matches = results.map((row) => {
-        'id': row[0],
-        'map': row[1],
-        'score_ct': row[2],
-        'score_t': row[3],
-        'date': row[4].toString()
-      }).toList();
+      try {
+        final results = await _connection.execute(
+          "SELECT id, map_name, score_ct, score_t, played_at FROM matches ORDER BY played_at DESC LIMIT 10"
+        );
+        
+        final matches = results.map((row) => {
+          'id': row[0],
+          'map': row[1],
+          'score_ct': row[2],
+          'score_t': row[3],
+          'date': row[4].toString() 
+        }).toList();
 
-      return Response.ok(jsonEncode(matches), headers: {'content-type': 'application/json'});
+        return Response.ok(jsonEncode(matches), headers: {'content-type': 'application/json'});
+      } catch (e) {
+        return Response.internalServerError(body: "Database Error: $e");
+      }
     }
 
     if (request.url.path.startsWith('match/')) {
       final id = int.tryParse(request.url.pathSegments.last);
       if (id != null) {
-        final players = await _connection.execute(
-          Sql.named("SELECT name, kills, deaths, hltv_rating, adr FROM player_stats WHERE match_id = @id ORDER BY hltv_rating DESC"),
-          parameters: {'id': id}
-        );
+        try {
+          final players = await _connection.execute(
+            Sql.named("SELECT name, kills, deaths, hltv_rating, adr FROM player_stats WHERE match_id = @id ORDER BY hltv_rating DESC"),
+            parameters: {'id': id}
+          );
 
-        final stats = players.map((row) => {
-          'name': row[0].toString(),
-          'kills': int.parse(row[1].toString()),
-          'deaths': int.parse(row[2].toString()),
-          'rating': double.tryParse(row[3].toString()) ?? 0.0,
-          'adr': double.tryParse(row[4].toString()) ?? 0.0
-        }).toList();
+          final stats = players.map((row) => {
+            'name': row[0].toString(),
+            'kills': int.tryParse(row[1].toString()) ?? 0,
+            'deaths': int.tryParse(row[2].toString()) ?? 0,
+            'rating': double.tryParse(row[3].toString()) ?? 0.0,
+            'adr': double.tryParse(row[4].toString()) ?? 0.0
+          }).toList();
 
-        return Response.ok(jsonEncode(stats), headers: {'content-type': 'application/json'});
+          return Response.ok(jsonEncode(stats), headers: {'content-type': 'application/json'});
+        } catch (e) {
+          return Response.internalServerError(body: "Database Error: $e");
+        }
       }
     }
 

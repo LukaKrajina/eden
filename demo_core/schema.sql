@@ -1,19 +1,26 @@
+-- Create the matches table
 CREATE TABLE IF NOT EXISTS matches (
     id SERIAL PRIMARY KEY,
-    file_name VARCHAR(255) NOT NULL,
-    map_name VARCHAR(64) NOT NULL,
-    score_ct INT DEFAULT 0,
-    score_t INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    map_name VARCHAR(255) NOT NULL,
+    score_ct INTEGER NOT NULL,
+    score_t INTEGER NOT NULL,
+    file_name VARCHAR(255),
+    played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create the player_stats table
 CREATE TABLE IF NOT EXISTS player_stats (
     id SERIAL PRIMARY KEY,
-    match_id INT REFERENCES matches(id) ON DELETE CASCADE,
+    match_id INTEGER REFERENCES matches(id) ON DELETE CASCADE,
     steam_id VARCHAR(64) NOT NULL,
-    name VARCHAR(128) NOT NULL,
-    kills INT DEFAULT 0,
-    deaths INT DEFAULT 0,
-    hltv_rating FLOAT DEFAULT 0.0,
-    adr FLOAT DEFAULT 0.0
+    name VARCHAR(255) NOT NULL,
+    kills INTEGER NOT NULL DEFAULT 0,
+    deaths INTEGER NOT NULL DEFAULT 0,
+    adr REAL NOT NULL DEFAULT 0.0,
+    hltv_rating REAL NOT NULL DEFAULT 0.0,
+    
+    CONSTRAINT unique_player_match UNIQUE (match_id, steam_id)
 );
+
+-- Create an index for faster API lookups
+CREATE INDEX idx_player_stats_match_id ON player_stats(match_id);
