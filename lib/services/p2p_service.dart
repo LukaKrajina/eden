@@ -42,6 +42,9 @@ typedef BuyItemDart = Pointer<Utf8> Function(Pointer<Utf8> sellerID, Pointer<Utf
 typedef ConfirmTradeC = Int32 Function(Pointer<Utf8> tradeID, Pointer<Utf8> assetID);
 typedef ConfirmTradeDart = int Function(Pointer<Utf8> tradeID, Pointer<Utf8> assetID);
 
+typedef SetSteamAPIKeyC = Void Function(Pointer<Utf8> key);
+typedef SetSteamAPIKeyDart = void Function(Pointer<Utf8> key);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -69,6 +72,7 @@ class P2PService {
   late PlaceBetDart _placeBet;
   late BuyItemDart _buyItem;
   late ConfirmTradeDart _confirmTrade;
+  late SetSteamAPIKeyDart _setSteamAPIKey;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -97,6 +101,7 @@ class P2PService {
     _placeBet = _lib.lookupFunction<PlaceBetC, PlaceBetDart>('PlaceBet');
     _buyItem = _lib.lookupFunction<BuyItemC, BuyItemDart>('BuyItem');
     _confirmTrade = _lib.lookupFunction<ConfirmTradeC, ConfirmTradeDart>('ConfirmTrade');
+    _setSteamAPIKey = _lib.lookupFunction<SetSteamAPIKeyC, SetSteamAPIKeyDart>('UpdateSteamAPIKey');
   }
 
   void start() {
@@ -214,6 +219,16 @@ class P2PService {
     } finally {
       calloc.free(tPtr);
       calloc.free(aPtr);
+    }
+  }
+
+  Future<void> updateSteamAPIKey(String key) async {
+    if (!_isInitialized) return;
+    final kPtr = key.toNativeUtf8();
+    try {
+      _setSteamAPIKey(kPtr);
+    } finally {
+      calloc.free(kPtr);
     }
   }
 }

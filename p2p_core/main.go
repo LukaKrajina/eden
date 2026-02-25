@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 	"unsafe"
@@ -45,7 +46,8 @@ import (
 )
 
 // --- Steam Configuration ---
-const SteamAPIKey = "YOUR_STEAM_WEB_API_KEY"
+var SteamAPIKey = os.Getenv("STEAM_API_KEY")
+
 const GSI_PORT = ":3000"
 
 // --- Constants & Globals ---
@@ -350,6 +352,12 @@ func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
 		}
 	}
 	return 0
+}
+
+//export SetSteamAPIKey
+func SetSteamAPIKey(key *C.char) {
+	SteamAPIKey = C.GoString(key)
+	fmt.Println("[Eden] Steam API Key updated via C-API")
 }
 
 // --- CGO Exports: Networking ---

@@ -51,6 +51,7 @@ typedef int (*IsPeerAliveFunc)();
 typedef char* (*PlaceBetFunc)(char* matchID, char* team, double amount);
 typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
+typedef void (*SetSteamAPIKeyFunc)(char* key);
 
 // --- Go Function Pointers ---
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
@@ -67,6 +68,7 @@ GoPacketCallback ptrSendToP2P = nullptr;
 PlaceBetFunc ptrPlaceBet = nullptr;
 CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
+SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
 
 // --- Forward Declarations ---
 bool LoadWintun();
@@ -162,6 +164,7 @@ bool LoadGoDLL() {
     ptrPlaceBet = (PlaceBetFunc)GetProcAddress(hGo, "PlaceBet");
     ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
+    ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -313,4 +316,8 @@ extern "C" __declspec(dllexport) bool ConfirmTrade(char* tradeID, char* assetID)
         return ptrVerifyTrade(tradeID, assetID) == 1;
     }
     return false;
+}
+
+extern "C" __declspec(dllexport) void UpdateSteamAPIKey(char* key) {
+    if (ptrSetSteamAPIKey) ptrSetSteamAPIKey(key);
 }

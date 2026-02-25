@@ -27,6 +27,7 @@ const Color kFaceitBorder = Color(0xFF333333);
 String g_CS2Path = "";
 String g_dbUser = "postgres";
 String g_DbPassword = "password";
+String g_steamApiKey = "";
 final ValueNotifier<String> appLanguageNotifier = ValueNotifier("English");
 late DemoService demo;
 final ApiServer apiServer = ApiServer();
@@ -45,6 +46,10 @@ void main() async {
   demo = DemoService();
   demo.setDatabaseUser(g_dbUser);
   demo.setDatabasePassword(g_DbPassword);
+  
+  if (g_steamApiKey.isNotEmpty) {
+    p2p.updateSteamAPIKey(g_steamApiKey);
+  }
 
   try{
     await apiServer.start(g_dbUser, g_DbPassword);
@@ -71,6 +76,7 @@ Future<void> _loadSettings() async {
       g_CS2Path = map['cs2_path'] ?? "";
       g_dbUser = map['db_user'] ?? "postgres";
       g_DbPassword = map['db_password'] ?? "password";
+      g_steamApiKey = map['steam_api_key'] ?? "";
       appLanguageNotifier.value = map['language'] ?? "English";
     }
   } catch (e) {
@@ -85,6 +91,7 @@ Future<void> _saveSettings() async {
       'cs2_path': g_CS2Path,
       'db_user': g_dbUser,
       'db_password': g_DbPassword,
+      'steam_api_key': g_steamApiKey,
       'language': appLanguageNotifier.value,
     };
     await file.writeAsString(jsonEncode(map));
@@ -182,6 +189,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _cs2PathController = TextEditingController();
   final TextEditingController _dbUserController = TextEditingController();
   final TextEditingController _dbPassController = TextEditingController();
+  final TextEditingController _steamApiKeyController = TextEditingController();
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
 
@@ -199,7 +207,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   bool _isCompanionVisible = false;
   int _currentView = 0;
   bool _hasMinedThisMatch = false;
-  
+  int _selectedShopTab = 0;
+
   // Game Config State
   String _selectedModeTitle = "MATCHMAKING"; 
   String _selectedGameType = "0";
@@ -234,6 +243,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _cs2PathController.text = g_CS2Path;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
+    _steamApiKeyController.text = g_steamApiKey;
 
     _scoreAcquirer();
     _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
@@ -253,6 +263,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _cs2PathController.dispose();
     _dbUserController.dispose();
     _dbPassController.dispose();
+    _steamApiKeyController.dispose();
     _friendCodeController.dispose();
     _nameController.dispose();
     super.dispose();
@@ -817,6 +828,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         return const ProSettingsGrid();
       case 3:
         return _buildStatsView();
+      case 4:
+        return _buildShopView();
       default:
         return Container();
     }
@@ -837,6 +850,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             setState(() => _currentView = 3);
             _fetchMatches();
           }),
+          _buildSideIcon(Icons.gavel, _currentView == 4, onTap: () => setState(() => _currentView = 4)), 
+          const Spacer(),
           const Spacer(),
           _buildSideIcon(Icons.settings, false, onTap: _showSettingsWindow),
           const SizedBox(height: 20),
@@ -861,6 +876,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (_currentView == 0) title = _lgpkg.get("PlayTitle");
     if (_currentView == 1) title = _lgpkg.get("SocialTitle");
     if (_currentView == 2) title = _lgpkg.get("ProConfigTitle");
+    if (_currentView == 4) title = "MARKETPLACE";
 
     return Container(
       height: 80, padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -875,6 +891,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             _buildHeaderTab("Tournaments", _selectedModeTitle == "TOURNAMENTS"),
             _buildHeaderTab("Deathmatch", _selectedModeTitle == "DEATHMATCH"),
             _buildHeaderTab("1v1Hubs", _selectedModeTitle == "1V1 HUBS"),
+          ],
+
+          if (_currentView == 4) ...[
+            _buildShopTab("AUCTION", 0),
+            _buildShopTab("BET", 1),
           ],
           
           const Spacer(),
@@ -1132,11 +1153,184 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kFaceitSurface, title: Text(title, style: const TextStyle(color: kFaceitOrange)), content: Text(msg, style: const TextStyle(color: kFaceitText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
   }
   
+  Widget _buildShopTab(String label, int index) {
+    bool isActive = _selectedShopTab == index;
+    return InkWell(
+      onTap: () => setState(() => _selectedShopTab = index),
+      child: Container(
+        margin: const EdgeInsets.only(right: 30),
+        padding: const EdgeInsets.symmetric(vertical: 26),
+        decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kFaceitOrange, width: 3)) : null),
+        child: Text(label, style: TextStyle(color: isActive ? kFaceitOrange : kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+      ),
+    );
+  }
+
+  Widget _buildShopView() {
+    return _selectedShopTab == 0 ? _buildAuctionContent() : _buildBettingContent();
+  }
+
+  Widget _buildAuctionContent() {
+    // Mock Data for Auction
+    final items = [
+      {"name": "AK-47 | Asiimov", "price": 150.0, "image": "https://market.fp.ps.netease.com/file/65f57072372367dc73b699e2Zc91itAt05?fop=imageView/6/f/webp/q/75"},
+      {"name": "AWP | Dragon Lore", "price": 5000.0, "image": "https://market.fp.ps.netease.com/file/65f58ae9831310d75518738eMzkP12O205?fop=imageView/6/f/webp/q/75"},
+      {"name": "M4A4 | Howl", "price": 2500.0, "image": "https://market.fp.ps.netease.com/file/65f5837c4c159f1e6e115dcdL4Q7oT7205?fop=imageView/6/f/webp/q/75"},
+    ];
+
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.8,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: items.length,
+      itemBuilder: (ctx, i) {
+        final item = items[i];
+        return Container(
+          decoration: BoxDecoration(
+            color: kFaceitSurface,
+            border: Border.all(color: kFaceitBorder),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+               Expanded(
+                 child: Container(
+                   color: Colors.black26,
+                   // Using Icon as placeholder if image fails, but network image is provided in mock
+                   child: Image.network(
+                     item['image'] as String, 
+                     fit: BoxFit.contain,
+                     errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                   ),
+                 ),
+               ),
+               Padding(
+                 padding: const EdgeInsets.all(12),
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+                     Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                     const SizedBox(height: 4),
+                     Text("${item['price']} EDN", style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
+                     const SizedBox(height: 12),
+                     ElevatedButton(
+                       style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+                       onPressed: () async {
+                         // Call P2P Service Buy Item
+                         String res = await widget.p2pService.buyItem("SYSTEM_MARKET", "ASSET_${i}_${DateTime.now().millisecondsSinceEpoch}", item['price'] as double);
+                         if(mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                         }
+                       },
+                       child: const Text("BUY NOW"),
+                     )
+                   ],
+                 ),
+               )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBettingContent() {
+    // Mock Data for Betting
+    final matches = [
+      {"id": "m1", "t1": "NaVi", "t2": "FaZe", "odds1": 1.5, "odds2": 2.2, "date": "LIVE"},
+      {"id": "m2", "t1": "G2", "t2": "Vitality", "odds1": 1.8, "odds2": 1.8, "date": "18:00"},
+      {"id": "m3", "t1": "Liquid", "t2": "Cloud9", "odds1": 2.5, "odds2": 1.4, "date": "20:00"},
+    ];
+
+    return ListView.builder(
+      itemCount: matches.length,
+      itemBuilder: (ctx, i) {
+        final m = matches[i];
+        final amountCtrl = TextEditingController();
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kFaceitSurface,
+            border: Border.all(color: kFaceitBorder),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: m['date'] == "LIVE" ? Colors.red : Colors.grey[800], borderRadius: BorderRadius.circular(4)),
+                child: Text(m['date'] as String, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Text(m['t1'] as String, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text("VS", style: TextStyle(color: Colors.grey)),
+                    Text(m['t2'] as String, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 24),
+              SizedBox(
+                width: 100,
+                child: TextField(
+                  controller: amountCtrl,
+                  decoration: const InputDecoration(
+                    hintText: "Amt",
+                    suffixText: "EDN",
+                    isDense: true,
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () async {
+                   double amt = double.tryParse(amountCtrl.text) ?? 0.0;
+                   if (amt > 0) {
+                     String res = await widget.p2pService.placeBet(m['id'] as String, m['t1'] as String, amt);
+                     if(mounted) {
+                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                     }
+                   }
+                },
+                child: Text("x${m['odds1']}"),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                onPressed: () async {
+                   double amt = double.tryParse(amountCtrl.text) ?? 0.0;
+                   if (amt > 0) {
+                     String res = await widget.p2pService.placeBet(m['id'] as String, m['t2'] as String, amt);
+                     if(mounted) {
+                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                     }
+                   }
+                },
+                child: Text("x${m['odds2']}"),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showSettingsWindow() {
-    // Temporary state for the dialog
     String tempLanguage = appLanguageNotifier.value;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
+    _steamApiKeyController.text = g_steamApiKey;
     
     showDialog(
       context: context, 
@@ -1166,6 +1360,19 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                     ),
                   ), 
                   const SizedBox(height: 20),
+
+                  // Steam API Key Input
+                  const Text("Steam Web API Key", style: TextStyle(color: Colors.grey)), 
+                    TextField(
+                      controller: _steamApiKeyController, 
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                      ),
+                    ), 
+                    const SizedBox(height: 20),
 
                   // DB User Input
                   const Text("Database User", style: TextStyle(color: Colors.grey)),
@@ -1233,12 +1440,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                           g_CS2Path = _cs2PathController.text;
                           g_dbUser = _dbUserController.text;
                           g_DbPassword = _dbPassController.text;
+                          g_steamApiKey = _steamApiKeyController.text;
                           appLanguageNotifier.value = tempLanguage;
                           
                           // 2. Update Runtime Services
                           widget.demoService.setDatabaseUser(g_dbUser);
                           widget.demoService.setDatabasePassword(g_DbPassword);
-
+                          widget.p2pService.updateSteamAPIKey(g_steamApiKey);
                           // 3. Save to File
                           _saveSettings();
                           
