@@ -30,16 +30,13 @@ static WINTUN_SEND_PACKET_FUNC* ptrSendPacket;
 static WINTUN_END_SESSION_FUNC* ptrEndSession;
 static WINTUN_CLOSE_ADAPTER_FUNC* ptrCloseAdapter;
 
-// --- Global State ---
 HMODULE WintunModule = NULL;
 WINTUN_ADAPTER_HANDLE Adapter = NULL;
 WINTUN_SESSION_HANDLE Session = NULL;
-std::atomic<bool> IsRunning(false); // Fix: Atomic for thread safety
+std::atomic<bool> IsRunning(false);
 
 // --- Go Bridge Types ---
 typedef void (*GoPacketCallback)(void* data, int len);
-GoPacketCallback ptrSendToP2P = nullptr;
-
 typedef char* (*SubmitGameBlockFunc)(int duration, int playerCount);
 typedef double (*GetWalletBalanceFunc)(char* address);
 typedef int (*SendTransactionFunc)(char* sender, char* receiver, double amount);
@@ -51,6 +48,9 @@ typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
 typedef char* (*AutoConnectToPeersFunc)();
 typedef int (*IsPeerAliveFunc)();
+typedef char* (*PlaceBetFunc)(char* matchID, char* team, double amount);
+typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
+typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
 
 // --- Go Function Pointers ---
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
@@ -63,6 +63,11 @@ StopNodeFunc ptrStopNode = nullptr;
 GetMyPeerIDFunc ptrGetMyPeerID = nullptr;
 AutoConnectToPeersFunc ptrAutoConnect = nullptr;
 IsPeerAliveFunc ptrIsPeerAlive = nullptr;
+GoPacketCallback ptrSendToP2P = nullptr;
+PlaceBetFunc ptrPlaceBet = nullptr;
+CreateEscrowFunc ptrCreateEscrow = nullptr;
+VerifyTradeFunc ptrVerifyTrade = nullptr;
+
 // --- Forward Declarations ---
 bool LoadWintun();
 void ReadFromTunLoop();
@@ -72,7 +77,6 @@ void ReadFromTunLoop();
 extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     if (!LoadWintun()) return -1;
 
-    // cleanup old interface silently
     system("netsh interface delete interface name=\"EdenVPN\" > nul 2>&1");
 
     GUID guid = { 0xdeadbeef, 0xface, 0x4ace, { 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef } };
@@ -81,7 +85,6 @@ extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     
     if (!Adapter) return -2;
 
-    // Fix: Silent IP assignment
     std::string ipCmd = "netsh interface ip set address name=\"EdenVPN\" static " + std::string(virtualIP) + " 255.255.255.0 > nul 2>&1";
     std::string mtuCmd = "netsh interface ipv4 set subinterface \"EdenVPN\" mtu=1400 store=persistent > nul 2>&1";
     system(ipCmd.c_str());
@@ -92,10 +95,9 @@ extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
 
     IsRunning = true;
     
-    // Start reading thread detached
     std::thread(ReadFromTunLoop).detach();
 
-    return 0; // Success
+    return 0;
 }
 
 extern "C" __declspec(dllexport) void RegisterPacketHandler(GoPacketCallback handler) {
@@ -105,7 +107,6 @@ extern "C" __declspec(dllexport) void RegisterPacketHandler(GoPacketCallback han
 extern "C" __declspec(dllexport) void InjectVPNPacket(void* data, int len) {
     if (!Session || !IsRunning) return;
 
-    // Optimization: Wintun allocate is fast, but we should check len
     if (len <= 0 || len > 1500) return; 
 
     BYTE* tunPacket = ptrAllocateSendPacket(Session, (DWORD)len);
@@ -157,8 +158,10 @@ bool LoadGoDLL() {
     ptrSubmitGameBlock = (SubmitGameBlockFunc)GetProcAddress(hGo, "SubmitGameBlock");
     ptrGetWalletBalance = (GetWalletBalanceFunc)GetProcAddress(hGo, "GetWalletBalance");
     ptrSendTransaction = (SendTransactionFunc)GetProcAddress(hGo, "SendTransaction");
-
     auto goHandler = (GoPacketCallback)GetProcAddress(hGo, "HandleOutboundPacket");
+    ptrPlaceBet = (PlaceBetFunc)GetProcAddress(hGo, "PlaceBet");
+    ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
+    ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -194,21 +197,6 @@ void ReadFromTunLoop() {
 
 // --- Exports ---
 
-extern "C" __declspec(dllexport) const char* MineBlock(int duration, int playerCount) {
-    if (ptrSubmitGameBlock) return ptrSubmitGameBlock(duration, playerCount);
-    return "Error: Function Not Loaded";
-}
-
-extern "C" __declspec(dllexport) double GetBalance(char* address) {
-    if (ptrGetWalletBalance) return ptrGetWalletBalance(address);
-    return 0.0;
-}
-
-extern "C" __declspec(dllexport) int SendEdenCoin(char* sender, char* receiver, double amount) {
-    if (ptrSendTransaction) return ptrSendTransaction(sender, receiver, amount);
-    return 0;
-}
-
 extern "C" __declspec(dllexport) void StartEngine() {
     if (!LoadGoDLL()) {
         std::cerr << "[Error] Failed to bridge with libp2p_core.dll" << std::endl;
@@ -243,7 +231,6 @@ extern "C" __declspec(dllexport) const char* GetIPForPeer(const char* peerID) {
 extern "C" __declspec(dllexport) void StopEngine() {
     IsRunning = false;
     
-    // Cleanup Wintun
     if (Session && ptrEndSession) {
         ptrEndSession(Session);
         Session = NULL;
@@ -253,7 +240,6 @@ extern "C" __declspec(dllexport) void StopEngine() {
         Adapter = NULL;
     }
 
-    // Stop Go Node
     if (ptrStopNode) {
         ptrStopNode();
     }
@@ -266,8 +252,6 @@ extern "C" __declspec(dllexport) void StopEngine() {
 
 extern "C" __declspec(dllexport) void GetDashboardData(bool* isMounted, char* dateOut) {
     *isMounted = IsRunning;
-
-    // Standard C time string (safe)
     time_t rawtime;
     struct tm * timeinfo;
     time(&rawtime);
@@ -297,4 +281,36 @@ extern "C" __declspec(dllexport) char* FindMatch() {
 
 extern "C" __declspec(dllexport) void JoinBattle(char* targetID) {
     if (ptrConnectToPeer) ptrConnectToPeer(targetID);
+}
+
+extern "C" __declspec(dllexport) const char* MineBlock(int duration, int playerCount) {
+    if (ptrSubmitGameBlock) return ptrSubmitGameBlock(duration, playerCount);
+    return "Error: Function Not Loaded";
+}
+
+extern "C" __declspec(dllexport) double GetBalance(char* address) {
+    if (ptrGetWalletBalance) return ptrGetWalletBalance(address);
+    return 0.0;
+}
+
+extern "C" __declspec(dllexport) int SendEdenCoin(char* sender, char* receiver, double amount) {
+    if (ptrSendTransaction) return ptrSendTransaction(sender, receiver, amount);
+    return 0;
+}
+
+extern "C" __declspec(dllexport) const char* PlaceBet(char* matchID, char* team, double amount) {
+    if (ptrPlaceBet) return ptrPlaceBet(matchID, team, amount);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* BuyItem(char* sellerID, char* assetID, double price) {
+    if (ptrCreateEscrow) return ptrCreateEscrow(sellerID, assetID, price);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) bool ConfirmTrade(char* tradeID, char* assetID) {
+    if (ptrVerifyTrade) {
+        return ptrVerifyTrade(tradeID, assetID) == 1;
+    }
+    return false;
 }

@@ -21,11 +21,9 @@ typedef GetIPForPeerDart = Pointer<Utf8> Function(Pointer<Utf8> peerID);
 typedef GetDashboardDataC = Void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
 typedef GetDashboardDataDart = void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
 
-// Matchmaking
 typedef FindMatchC = Pointer<Utf8> Function();
 typedef FindMatchDart = Pointer<Utf8> Function();
 
-// Wallet / Mining
 typedef MineBlockC = Pointer<Utf8> Function(Int32 duration, Int32 playerCount);
 typedef MineBlockDart = Pointer<Utf8> Function(int duration, int playerCount);
 
@@ -34,6 +32,15 @@ typedef GetBalanceDart = double Function(Pointer<Utf8> address);
 
 typedef SendTxC = Int32 Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, Double amount);
 typedef SendTxDart = int Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, double amount);
+
+typedef PlaceBetC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> team, Double amount);
+typedef PlaceBetDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> team, double amount);
+
+typedef BuyItemC = Pointer<Utf8> Function(Pointer<Utf8> sellerID, Pointer<Utf8> assetID, Double price);
+typedef BuyItemDart = Pointer<Utf8> Function(Pointer<Utf8> sellerID, Pointer<Utf8> assetID, double price);
+
+typedef ConfirmTradeC = Int32 Function(Pointer<Utf8> tradeID, Pointer<Utf8> assetID);
+typedef ConfirmTradeDart = int Function(Pointer<Utf8> tradeID, Pointer<Utf8> assetID);
 
 class DashboardInfo {
   final bool isMounted;
@@ -59,6 +66,9 @@ class P2PService {
   late MineBlockDart _mineBlock;
   late GetBalanceDart _getBalance;
   late SendTxDart _sendTx;
+  late PlaceBetDart _placeBet;
+  late BuyItemDart _buyItem;
+  late ConfirmTradeDart _confirmTrade;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -80,17 +90,14 @@ class P2PService {
     _getLocalPeerID = _lib.lookupFunction<GetLocalPeerIDC, GetLocalPeerIDDart>('GetLocalPeerID');
     _getIPForPeer = _lib.lookupFunction<GetIPForPeerC, GetIPForPeerDart>('GetIPForPeer');
     _getDashboardData = _lib.lookupFunction<GetDashboardDataC, GetDashboardDataDart>('GetDashboardData');
-    
-    // Matchmaking
     _findMatch = _lib.lookupFunction<FindMatchC, FindMatchDart>('FindMatch');
-
-    // Wallet Functions
     _mineBlock = _lib.lookupFunction<MineBlockC, MineBlockDart>('MineBlock');
     _getBalance = _lib.lookupFunction<GetBalanceC, GetBalanceDart>('GetBalance');
     _sendTx = _lib.lookupFunction<SendTxC, SendTxDart>('SendEdenCoin');
+    _placeBet = _lib.lookupFunction<PlaceBetC, PlaceBetDart>('PlaceBet');
+    _buyItem = _lib.lookupFunction<BuyItemC, BuyItemDart>('BuyItem');
+    _confirmTrade = _lib.lookupFunction<ConfirmTradeC, ConfirmTradeDart>('ConfirmTrade');
   }
-
-  // --- Engine Control ---
 
   void start() {
     if (_isInitialized) _startEngine();
@@ -107,8 +114,6 @@ class P2PService {
     calloc.free(ptr);
   }
 
-  // --- Info Getters ---
-
   Future<String> getMyID() async {
     if (!_isInitialized) return "Offline";
     return _getLocalPeerID().toDartString();
@@ -123,7 +128,6 @@ class P2PService {
   }
 
   bool isConnected() {
-    // Simple check if ID is valid
     if (!_isInitialized) return false;
     final id = _getLocalPeerID().toDartString();
     return id.isNotEmpty && id != "Not Connected";
@@ -144,14 +148,10 @@ class P2PService {
     }
   }
 
-  // --- Matchmaking ---
-
   Future<String> findMatch() async {
     if (!_isInitialized) return "Error: Engine Not Loaded";
     return _findMatch().toDartString();
   }
-
-  // --- Wallet & Mining ---
 
   Future<String> submitMatchReward(int duration, int playerCount) async {
     if (!_isInitialized) return "Error: Engine Offline";
@@ -178,6 +178,42 @@ class P2PService {
     } finally {
       calloc.free(sPtr);
       calloc.free(rPtr);
+    }
+  }
+
+  Future<String> placeBet(String matchID, String team, double amount) async {
+    if (!_isInitialized) return "Error: Offline";
+    final mPtr = matchID.toNativeUtf8();
+    final tPtr = team.toNativeUtf8();
+    try {
+      return _placeBet(mPtr, tPtr, amount).toDartString();
+    } finally {
+      calloc.free(mPtr);
+      calloc.free(tPtr);
+    }
+  }
+
+  Future<String> buyItem(String sellerID, String assetID, double price) async {
+    if (!_isInitialized) return "Error: Offline";
+    final sPtr = sellerID.toNativeUtf8();
+    final aPtr = assetID.toNativeUtf8();
+    try {
+      return _buyItem(sPtr, aPtr, price).toDartString();
+    } finally {
+      calloc.free(sPtr);
+      calloc.free(aPtr);
+    }
+  }
+
+  Future<bool> checkTradeStatus(String tradeID, String assetID) async {
+    if (!_isInitialized) return false;
+    final tPtr = tradeID.toNativeUtf8();
+    final aPtr = assetID.toNativeUtf8();
+    try {
+      return _confirmTrade(tPtr, aPtr) == 1;
+    } finally {
+      calloc.free(tPtr);
+      calloc.free(aPtr);
     }
   }
 }

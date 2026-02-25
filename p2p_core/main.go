@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 	"unsafe"
@@ -43,6 +44,10 @@ import (
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
 
+// --- Steam Configuration ---
+const SteamAPIKey = "YOUR_STEAM_WEB_API_KEY"
+const GSI_PORT = ":3000"
+
 // --- Constants & Globals ---
 
 const (
@@ -53,17 +58,19 @@ const (
 )
 
 var (
-	h            host.Host
-	ctx          context.Context
-	kademliaDHT  *dht.IpfsDHT
-	activeStream network.Stream
-	streamLock   sync.Mutex
-	pubSub       *pubsub.PubSub
-	blockTopic   *pubsub.Topic
+	h              host.Host
+	ctx            context.Context
+	kademliaDHT    *dht.IpfsDHT
+	activeStream   network.Stream
+	streamLock     sync.Mutex
+	pubSub         *pubsub.PubSub
+	blockTopic     *pubsub.Topic
+	currentMatchID string
+	bettingTopic   *pubsub.Topic
 
 	bufferPool = sync.Pool{
 		New: func() interface{} {
-			return make([]byte, 4096) // Standard MTU is 1500, 4096 is safe
+			return make([]byte, 4096)
 		},
 	}
 )
@@ -78,10 +85,83 @@ type NetworkStats struct {
 	IsInitialized   bool
 }
 
+type GSIState struct {
+	Provider struct {
+		SteamID   string `json:"steamid"`
+		Timestamp int    `json:"timestamp"`
+	} `json:"provider"`
+	Map struct {
+		Phase  string `json:"phase"` // "live", "gameover"
+		Name   string `json:"name"`
+		TeamCT struct {
+			Score int `json:"score"`
+		} `json:"team_ct"`
+		TeamT struct {
+			Score int `json:"score"`
+		} `json:"team_t"`
+	} `json:"map"`
+}
+
+type SteamTradeOfferResponse struct {
+	Response struct {
+		TradeOffersReceived []struct {
+			TradeOfferID string `json:"tradeofferid"`
+			State        int    `json:"trade_offer_state"`
+			ItemsToGive  []struct {
+				AssetID string `json:"assetid"`
+				ClassID string `json:"classid"`
+			} `json:"items_to_give"`
+		} `json:"trade_offers_received"`
+	} `json:"response"`
+}
+
 var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var myPeerID string
+
+// --- Game State Integration (GSI) Server ---
+
+func StartGSIServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		var state GSIState
+		json.Unmarshal(body, &state)
+
+		w.WriteHeader(http.StatusOK)
+
+		if state.Map.Phase == "gameover" && currentMatchID != "" {
+			winningTeam := "CT"
+			if state.Map.TeamT.Score > state.Map.TeamCT.Score {
+				winningTeam = "T"
+			}
+
+			payoutTxs := EdenChain.ResolveMatch(currentMatchID, winningTeam)
+			if len(payoutTxs) > 0 {
+				newBlock := Block{
+					Index:        len(EdenChain.Chain),
+					Timestamp:    time.Now().Unix(),
+					Transactions: payoutTxs,
+					PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+				}
+				newBlock.Hash = calculateHash(newBlock)
+
+				if EdenChain.AddBlock(newBlock) {
+					broadcastBlock(newBlock)
+					fmt.Printf("[Oracle] Match %s resolved. Winner: %s. Broadcast Block #%d\n", currentMatchID, winningTeam, newBlock.Index)
+				}
+			}
+			currentMatchID = ""
+		}
+	})
+
+	go http.ListenAndServe(GSI_PORT, nil)
+	fmt.Printf("[GSI] Oracle listening on %s\n", GSI_PORT)
+}
 
 // --- CGO Exports: Node Management ---
 
@@ -117,8 +197,11 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		go readStreamLoop(s)
 	})
 
+	StartGSIServer()
+
 	myPeerID = h.ID().String()
 	fmt.Printf("[Eden] Node Started. ID: %s\n", h.ID().String())
+
 	return C.CString(getIPFromPeerID(h.ID().String()))
 }
 
@@ -164,6 +247,109 @@ func SubmitGameBlock(duration C.int, playerCount C.int) *C.char {
 //export GetWalletBalance
 func GetWalletBalance(address *C.char) C.double {
 	return C.double(EdenChain.GetBalance(C.GoString(address)))
+}
+
+// --- CGO Exports: Betting & Auctions ---
+func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
+	mID := C.GoString(matchID)
+	tm := C.GoString(team)
+	amt := float64(amount)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("bet_%d", time.Now().UnixNano()),
+		Type:      TxTypeBet,
+		Sender:    h.ID().String(),
+		Receiver:  "POOL_CONTRACT", // Logic handled in AddBlock
+		Amount:    amt,
+		Payload:   fmt.Sprintf("%s:%s", mID, tm),
+		Timestamp: time.Now().Unix(),
+	}
+
+	// Wrap in a block (Simplified: normally goes to mempool)
+	newBlock := Block{
+		Index:        len(EdenChain.Chain),
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString(tx.ID)
+	}
+	return C.CString("Error: Bet Failed")
+}
+
+//export CreateEscrow
+func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
+	tx := Transaction{
+		ID:        fmt.Sprintf("escrow_%d", time.Now().UnixNano()),
+		Type:      TxTypeEscrow,
+		Sender:    h.ID().String(),
+		Receiver:  C.GoString(sellerID),
+		Amount:    float64(price),
+		Payload:   C.GoString(assetID),
+		Timestamp: time.Now().Unix(),
+	}
+
+	newBlock := Block{
+		Index:        len(EdenChain.Chain),
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString(tx.ID)
+	}
+	return C.CString("Error: Escrow Broadcast Failed")
+}
+
+// --- Steam Oracle Logic ---
+
+//export VerifySteamTrade
+func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
+	tid := C.GoString(tradeOfferID)
+	aid := C.GoString(expectedAssetID)
+	url := fmt.Sprintf("https://api.steampowered.com/IEconService/GetTradeOffer/v1/?key=%s&tradeofferid=%s&language=en_us", SteamAPIKey, tid)
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var data SteamTradeOfferResponse
+	json.Unmarshal(body, &data)
+
+	if len(data.Response.TradeOffersReceived) > 0 {
+		offer := data.Response.TradeOffersReceived[0]
+		if offer.State == 3 {
+			for _, item := range offer.ItemsToGive {
+				if item.AssetID == aid {
+					settleTx := EdenChain.SettleEscrow(tid)
+					if settleTx != nil {
+						newBlock := Block{
+							Index:        len(EdenChain.Chain),
+							Timestamp:    time.Now().Unix(),
+							Transactions: []Transaction{*settleTx},
+							PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+						}
+						newBlock.Hash = calculateHash(newBlock)
+
+						if EdenChain.AddBlock(newBlock) {
+							broadcastBlock(newBlock)
+							return 1
+						}
+					}
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // --- CGO Exports: Networking ---
