@@ -201,7 +201,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   String _myPeerID = "";
-  String _mySteamID = "76561197963762712";
+  String _mySteamID = "";
   
   String _status = "WAITING FOR ACTION"; 
   String _level = "10";
