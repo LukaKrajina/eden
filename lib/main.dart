@@ -197,6 +197,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   String _myPeerID = "";
+  String _mySteamID = "76561197963762712";
   
   String _status = "WAITING FOR ACTION"; 
   String _level = "10";
@@ -222,6 +223,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   // Friends Data
   final List<Friend> _friends = [];
+
+  // Auction Data
+  List<dynamic> _realAuctions = [];
 
   final List<String> _maps = [
     "de_dust2", "de_mirage", "de_inferno", "de_nuke", 
@@ -322,8 +326,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     }
   }
 
-  // --- Friend & Trade Logic ---
-
   void _addFriend() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kFaceitSurface,
@@ -377,8 +379,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  // --- Profile & Wallet Logic ---
-
   String _getFriendCode() {
     if (_myPeerID.length < 6) return _lgpkg.get("Loading");
     return _myPeerID.substring(_myPeerID.length - 6).toUpperCase();
@@ -391,7 +391,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       return false;
     }
     
-    // Simple burn for MVP
     bool success = await widget.p2pService.sendEdenCoin(_myPeerID, "SYSTEM_BURN_ADDRESS", amount);
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$amount EDN deducted for $actionName"), backgroundColor: kFaceitOrange));
@@ -532,8 +531,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  // --- Game Config Logic ---
-
   void _setGameMode(String mode) {
     setState(() {
       _selectedModeTitle = mode;
@@ -569,9 +566,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       }
     });
   }
-
-
-  // --- Demo Analysis Logic ---
 
   Future<void> _uploadDemo() async {
   FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -665,8 +659,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     }
   }
 
-
-  // --- Core Engine Logic ---
 
   Future<void> _launchAntiCheatEngine() async {
     widget.p2pService.start();
@@ -772,7 +764,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     await _runner.startClient(g_CS2Path, hostIP, _nameController.text);
   }
 
-  // --- UI Layout ---
+  Future<void> _refreshAuctions() async {
+    final data = await widget.p2pService.getActiveAuctions();
+    if (mounted) setState(() => _realAuctions = data);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1170,71 +1165,237 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     return _selectedShopTab == 0 ? _buildAuctionContent() : _buildBettingContent();
   }
 
-  Widget _buildAuctionContent() {
-    // Mock Data for Auction
-    final items = [
-      {"name": "AK-47 | Asiimov", "price": 150.0, "image": "https://market.fp.ps.netease.com/file/65f57072372367dc73b699e2Zc91itAt05?fop=imageView/6/f/webp/q/75"},
-      {"name": "AWP | Dragon Lore", "price": 5000.0, "image": "https://market.fp.ps.netease.com/file/65f58ae9831310d75518738eMzkP12O205?fop=imageView/6/f/webp/q/75"},
-      {"name": "M4A4 | Howl", "price": 2500.0, "image": "https://market.fp.ps.netease.com/file/65f5837c4c159f1e6e115dcdL4Q7oT7205?fop=imageView/6/f/webp/q/75"},
-    ];
+  void _showListingDialog() {
+    List<dynamic> _inventory = [];
+    bool _loading = true;
+    int _selectedIndex = -1;
+    final priceCtrl = TextEditingController();
+    final durationCtrl = TextEditingController(text: "3600");
 
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.8,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-      ),
-      itemCount: items.length,
-      itemBuilder: (ctx, i) {
-        final item = items[i];
-        return Container(
-          decoration: BoxDecoration(
-            color: kFaceitSurface,
-            border: Border.all(color: kFaceitBorder),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+
+    widget.p2pService.getSteamInventory(_mySteamID).then((items) {
+          if(mounted) {
+            setState(() {
+                _inventory = items;
+                _loading = false;
+            });
+          }
+      });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: kFaceitSurface,
+            title: const Text("Select Item to Sell", style: TextStyle(color: kFaceitOrange)),
+            content: SizedBox(
+              width: 500, height: 400,
+              child: Column(
+                children: [
+                  if(_loading) const LinearProgressIndicator(color: kFaceitOrange),
+                  Expanded(
+                    child: GridView.builder(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 8, mainAxisSpacing: 8),
+                      itemCount: _inventory.length,
+                      itemBuilder: (c, i) {
+                        final item = _inventory[i];
+                        bool selected = _selectedIndex == i;
+                        return InkWell(
+                          onTap: () => setDialogState(() => _selectedIndex = i),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(color: selected ? kFaceitOrange : kFaceitBorder, width: selected ? 2 : 1),
+                              color: kFaceitSurface,
+                            ),
+                            child: Column(
+                              children: [
+                                Expanded(child: Image.network(item['image_url'], fit: BoxFit.cover)),
+                                Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: Text(item['name'], style: const TextStyle(fontSize: 10, color: Colors.white), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                ),
+                                Text(item['wear'], style: const TextStyle(fontSize: 8, color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if(_selectedIndex != -1)
+                      TextField(
+                          controller: priceCtrl, 
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white), 
+                          decoration: InputDecoration(
+                              labelText: "Price for ${_inventory[_selectedIndex]['name']} (EDN)",
+                              border: const OutlineInputBorder()
+                          )
+                      ),
+                ],
+              ),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+                onPressed: () async {
+                    if(_selectedIndex == -1 || priceCtrl.text.isEmpty) return;
+                    
+                    final item = _inventory[_selectedIndex];
+                    await widget.p2pService.listRichItem(
+                        item['asset_id'],
+                        item['name'],
+                        item['image_url'],
+                        item['wear'],
+                        double.parse(priceCtrl.text),
+                        durationCtrl.text.isEmpty ? 3600 : int.parse(durationCtrl.text)
+                    );
+                    Navigator.pop(ctx);
+                    Future.delayed(const Duration(seconds: 1), _refreshAuctions);
+                }, 
+                child: const Text("LIST ITEM")
+              )
+            ],
+          );
+        }
+      )
+    );
+  }
+
+  Widget _buildAuctionContent() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-               Expanded(
-                 child: Container(
-                   color: Colors.black26,
-                   // Using Icon as placeholder if image fails, but network image is provided in mock
-                   child: Image.network(
-                     item['image'] as String, 
-                     fit: BoxFit.contain,
-                     errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+               const Text("GLOBAL MARKET", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+               Row(
+                 children: [
+                   IconButton(
+                     icon: const Icon(Icons.refresh, color: kFaceitOrange), 
+                     onPressed: _refreshAuctions,
+                     tooltip: "Sync with Blockchain",
                    ),
-                 ),
-               ),
-               Padding(
-                 padding: const EdgeInsets.all(12),
-                 child: Column(
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                     Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                     const SizedBox(height: 4),
-                     Text("${item['price']} EDN", style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
-                     const SizedBox(height: 12),
-                     ElevatedButton(
-                       style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
-                       onPressed: () async {
-                         // Call P2P Service Buy Item
-                         String res = await widget.p2pService.buyItem("SYSTEM_MARKET", "ASSET_${i}_${DateTime.now().millisecondsSinceEpoch}", item['price'] as double);
-                         if(mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-                         }
-                       },
-                       child: const Text("BUY NOW"),
-                     )
-                   ],
-                 ),
+                   const SizedBox(width: 10),
+                   ElevatedButton.icon(
+                      icon: const Icon(Icons.add_shopping_cart, size: 16),
+                      label: const Text("SELL ITEM"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
+                      ),
+                      onPressed: _showListingDialog,
+                   ),
+                 ],
                )
             ],
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: _realAuctions.isEmpty 
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_tethering_off, size: 64, color: Colors.white10),
+                    const SizedBox(height: 16),
+                    Text("No active listings found on the chain.", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5))),
+                  ],
+                )
+              )
+            : GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 0.8,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: _realAuctions.length,
+                itemBuilder: (ctx, i) {
+                  final item = _realAuctions[i];
+                  // Blockchain data structure: {id, seller, asset_id, price, expires_at}
+                  
+                  // Helper to determine image based on name (optional visual polish)
+                  String imageUrl = ""; 
+                  if(item['asset_id'].toString().contains("Asiimov")) imageUrl = "https://market.fp.ps.netease.com/file/65f57072372367dc73b699e2Zc91itAt05?fop=imageView/6/f/webp/q/75";
+                  else if(item['asset_id'].toString().contains("Dragon")) imageUrl = "https://market.fp.ps.netease.com/file/65f58ae9831310d75518738eMzkP12O205?fop=imageView/6/f/webp/q/75";
+                  
+                  bool isMyItem = item['seller'] == _myPeerID;
+
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: kFaceitSurface,
+                      border: Border.all(color: isMyItem ? Colors.green.withOpacity(0.5) : kFaceitBorder),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            color: Colors.black26,
+                            padding: const EdgeInsets.all(16),
+                            child: imageUrl.isNotEmpty 
+                              ? Image.network(imageUrl, fit: BoxFit.contain, errorBuilder: (_,__,___)=>const Icon(Icons.card_giftcard, size: 50, color: Colors.white24))
+                              : const Icon(Icons.card_giftcard, size: 50, color: Colors.white24),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item['asset_id'], 
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text("${item['price']} EDN", style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
+                                  if(isMyItem) const Text("YOU", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: isMyItem 
+                                ? OutlinedButton(
+                                    onPressed: null, 
+                                    child: const Text("LISTED", style: TextStyle(color: Colors.grey))
+                                  )
+                                : ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+                                    onPressed: () async {
+                                      String res = await widget.p2pService.buyItem(
+                                        item['seller'], // Real Seller ID
+                                        item['asset_id'], // Real Asset ID
+                                        (item['price'] as num).toDouble()
+                                      );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                                        _refreshAuctions(); 
+                                      }
+                                    },
+                                    child: const Text("BUY NOW"),
+                                  ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
+        ),
+      ],
     );
   }
 
@@ -1284,7 +1445,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                 child: TextField(
                   controller: amountCtrl,
                   decoration: const InputDecoration(
-                    hintText: "Amt",
+                    hintText: "0",
                     suffixText: "EDN",
                     isDense: true,
                   ),

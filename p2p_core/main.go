@@ -117,6 +117,38 @@ type SteamTradeOfferResponse struct {
 	} `json:"response"`
 }
 
+type SteamInventoryResponse struct {
+	Assets []struct {
+		AppID      int    `json:"appid"`
+		ContextID  string `json:"contextid"`
+		AssetID    string `json:"assetid"`
+		ClassID    string `json:"classid"`
+		InstanceID string `json:"instanceid"`
+		Amount     string `json:"amount"`
+	} `json:"assets"`
+	Descriptions []struct {
+		ClassID        string `json:"classid"`
+		InstanceID     string `json:"instanceid"`
+		MarketHashName string `json:"market_hash_name"`
+		IconUrl        string `json:"icon_url"`
+		Descriptions   []struct {
+			Value string `json:"value"`
+		} `json:"descriptions"`
+		Tags []struct {
+			Category string `json:"category"`
+			Name     string `json:"name"`
+		} `json:"tags"`
+	} `json:"descriptions"`
+}
+
+type RichItem struct {
+	AssetID  string `json:"asset_id"`
+	Name     string `json:"name"`
+	ImageURL string `json:"image_url"`
+	Wear     string `json:"wear"`
+	Quality  string `json:"quality"`
+}
+
 var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
@@ -204,6 +236,34 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	myPeerID = h.ID().String()
 	fmt.Printf("[Eden] Node Started. ID: %s\n", h.ID().String())
 
+	// --- ADD THIS SECTION: DEV AIRDROP ---
+	// Automatically mint 1000 EDN to self for testing
+	airdropTx := Transaction{
+		ID:        fmt.Sprintf("genesis_drop_%d", time.Now().UnixNano()),
+		Type:      TxTypeTransfer,
+		Sender:    "SYSTEM_MINT", // Bypasses balance check
+		Receiver:  myPeerID,
+		Amount:    1000.0,
+		Timestamp: time.Now().Unix(),
+		Signature: "DEV_AIRDROP",
+	}
+
+	// Create a block for this airdrop
+	airdropBlock := Block{
+		Index:        len(EdenChain.Chain),
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{airdropTx},
+		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+	}
+	// Note: You need to make calculateHash exported (Capitalize to CalculateHash)
+	// OR just copy the hashing logic here if it's private in blockchain.go.
+	// Assuming you capitalized it or it's accessible:
+	airdropBlock.Hash = calculateHash(airdropBlock)
+
+	if EdenChain.AddBlock(airdropBlock) {
+		fmt.Println("[Eden] Dev Airdrop: +1000 EDN minted to local wallet.")
+	}
+
 	return C.CString(getIPFromPeerID(h.ID().String()))
 }
 
@@ -252,6 +312,105 @@ func GetWalletBalance(address *C.char) C.double {
 }
 
 // --- CGO Exports: Betting & Auctions ---
+
+//export ListSteamItem
+func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.char {
+	aID := C.GoString(assetID)
+	p := float64(price)
+	dur := int(durationSeconds)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("list_%d", time.Now().UnixNano()),
+		Type:      TxTypeList,
+		Sender:    h.ID().String(),
+		Receiver:  "MARKETPLACE",
+		Amount:    p,
+		Payload:   fmt.Sprintf("%s:%d", aID, dur),
+		Timestamp: time.Now().Unix(),
+	}
+
+	newBlock := Block{
+		Index:        len(EdenChain.Chain),
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString("Success")
+	}
+	return C.CString("Error: Listing Failed")
+}
+
+//export GetOpenAuctions
+func GetOpenAuctions() *C.char {
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+
+	var active []Auction
+
+	for _, v := range EdenChain.ActiveAuctions {
+		if v.State == "OPEN" {
+			active = append(active, *v)
+		}
+	}
+
+	data, err := json.Marshal(active)
+	if err != nil {
+		return C.CString("[]")
+	}
+	return C.CString(string(data))
+}
+
+//export TriggerExpirationCleanup
+func TriggerExpirationCleanup() *C.char {
+	EdenChain.Mutex.RLock()
+	var toClose []string
+	now := time.Now().Unix()
+
+	for k, v := range EdenChain.ActiveAuctions {
+		if v.State == "OPEN" && v.ExpiresAt <= now {
+			toClose = append(toClose, k)
+		}
+	}
+	EdenChain.Mutex.RUnlock()
+
+	if len(toClose) == 0 {
+		return C.CString("Nothing to clean")
+	}
+
+	count := 0
+	for _, auctionID := range toClose {
+		tx := Transaction{
+			ID:        fmt.Sprintf("expire_%s_%d", auctionID, time.Now().UnixNano()),
+			Type:      TxTypeCloseExpired,
+			Sender:    h.ID().String(),
+			Receiver:  "MARKETPLACE",
+			Amount:    0,
+			Payload:   auctionID,
+			Timestamp: time.Now().Unix(),
+		}
+
+		newBlock := Block{
+			Index:        len(EdenChain.Chain),
+			Timestamp:    time.Now().Unix(),
+			Transactions: []Transaction{tx},
+			PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+		}
+		newBlock.Hash = calculateHash(newBlock)
+
+		if EdenChain.AddBlock(newBlock) {
+			broadcastBlock(newBlock)
+			count++
+		}
+	}
+
+	return C.CString(fmt.Sprintf("Cleaned %d auctions", count))
+}
+
+//export PlaceBet
 func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 	mID := C.GoString(matchID)
 	tm := C.GoString(team)
@@ -281,6 +440,37 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 		return C.CString(tx.ID)
 	}
 	return C.CString("Error: Bet Failed")
+}
+
+//export SendTransaction
+func SendTransaction(sender *C.char, receiver *C.char, amount C.double) C.int {
+	s := C.GoString(sender)
+	r := C.GoString(receiver)
+	amt := float64(amount)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("tx_%d", time.Now().UnixNano()),
+		Type:      TxTypeTransfer,
+		Sender:    s,
+		Receiver:  r,
+		Amount:    amt,
+		Timestamp: time.Now().Unix(),
+		Signature: "VALID",
+	}
+
+	newBlock := Block{
+		Index:        len(EdenChain.Chain),
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return 1
+	}
+	return 0
 }
 
 //export CreateEscrow
@@ -358,6 +548,66 @@ func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
 func SetSteamAPIKey(key *C.char) {
 	SteamAPIKey = C.GoString(key)
 	fmt.Println("[Eden] Steam API Key updated via C-API")
+}
+
+//export FetchMyInventory
+func FetchMyInventory(steamID *C.char) *C.char {
+	sID := C.GoString(steamID)
+	// Public Inventory Endpoint (CS2 AppID: 730, ContextID: 2)
+	url := fmt.Sprintf("https://steamcommunity.com/inventory/%s/730/2?l=english&count=100", sID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return C.CString("[]")
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var data SteamInventoryResponse
+	json.Unmarshal(body, &data)
+	//descMap := make(map[string]SteamInventoryResponse)
+	type Key struct {
+		ClassID, InstanceID string
+	}
+	lookup := make(map[Key]int)
+	for i, d := range data.Descriptions {
+		lookup[Key{d.ClassID, d.InstanceID}] = i
+	}
+
+	var richItems []RichItem
+
+	for _, asset := range data.Assets {
+		if idx, found := lookup[Key{asset.ClassID, asset.InstanceID}]; found {
+			desc := data.Descriptions[idx]
+
+			// Extract Wear (Float) - usually in descriptions or "inspect" link
+			// For WebAPI, wear is often hidden, but "Exterior" is a tag.
+			wear := "Unknown"
+			quality := "Normal"
+
+			for _, tag := range desc.Tags {
+				if tag.Category == "Exterior" {
+					wear = tag.Name
+				}
+				if tag.Category == "Rarity" {
+					quality = tag.Name
+				}
+			}
+
+			img := fmt.Sprintf("https://community.cloudflare.steamstatic.com/economy/image/%s/360fx360f", desc.IconUrl)
+
+			richItems = append(richItems, RichItem{
+				AssetID:  asset.AssetID,
+				Name:     desc.MarketHashName,
+				ImageURL: img,
+				Wear:     wear,
+				Quality:  quality,
+			})
+		}
+	}
+
+	jsonData, _ := json.Marshal(richItems)
+	return C.CString(string(jsonData))
 }
 
 // --- CGO Exports: Networking ---

@@ -48,6 +48,10 @@ typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
 typedef char* (*AutoConnectToPeersFunc)();
 typedef int (*IsPeerAliveFunc)();
+typedef char* (*FetchMyInventoryFunc)(char* steamID);
+typedef char* (*ListSteamItemFunc)(char* assetID, double price, int duration);
+typedef char* (*GetOpenAuctionsFunc)();
+typedef char* (*TriggerExpirationCleanupFunc)();
 typedef char* (*PlaceBetFunc)(char* matchID, char* team, double amount);
 typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
@@ -65,6 +69,10 @@ GetMyPeerIDFunc ptrGetMyPeerID = nullptr;
 AutoConnectToPeersFunc ptrAutoConnect = nullptr;
 IsPeerAliveFunc ptrIsPeerAlive = nullptr;
 GoPacketCallback ptrSendToP2P = nullptr;
+FetchMyInventoryFunc ptrFetchMyInventory = nullptr;
+ListSteamItemFunc ptrListSteamItem = nullptr;
+GetOpenAuctionsFunc ptrGetOpenAuctions = nullptr;
+TriggerExpirationCleanupFunc ptrTriggerExpirationCleanup = nullptr;
 PlaceBetFunc ptrPlaceBet = nullptr;
 CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
@@ -161,6 +169,10 @@ bool LoadGoDLL() {
     ptrGetWalletBalance = (GetWalletBalanceFunc)GetProcAddress(hGo, "GetWalletBalance");
     ptrSendTransaction = (SendTransactionFunc)GetProcAddress(hGo, "SendTransaction");
     auto goHandler = (GoPacketCallback)GetProcAddress(hGo, "HandleOutboundPacket");
+    ptrFetchMyInventory = (FetchMyInventoryFunc)GetProcAddress(hGo, "FetchMyInventory");
+    ptrListSteamItem = (ListSteamItemFunc)GetProcAddress(hGo, "ListSteamItem");
+    ptrGetOpenAuctions = (GetOpenAuctionsFunc)GetProcAddress(hGo, "GetOpenAuctions");
+    ptrTriggerExpirationCleanup = (TriggerExpirationCleanupFunc)GetProcAddress(hGo, "TriggerExpirationCleanup");
     ptrPlaceBet = (PlaceBetFunc)GetProcAddress(hGo, "PlaceBet");
     ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
@@ -301,6 +313,21 @@ extern "C" __declspec(dllexport) int SendEdenCoin(char* sender, char* receiver, 
     return 0;
 }
 
+extern "C" __declspec(dllexport) const char* ListAuctionItem(char* assetID, double price, int duration) {
+    if (ptrListSteamItem) return ptrListSteamItem(assetID, price, duration);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* FetchAuctions() {
+    if (ptrGetOpenAuctions) return ptrGetOpenAuctions();
+    return "[]";
+}
+
+extern "C" __declspec(dllexport) const char* RunExpirationCheck() {
+    if (ptrTriggerExpirationCleanup) return ptrTriggerExpirationCleanup();
+    return "Error: DLL Func Missing";
+}
+
 extern "C" __declspec(dllexport) const char* PlaceBet(char* matchID, char* team, double amount) {
     if (ptrPlaceBet) return ptrPlaceBet(matchID, team, amount);
     return "Error: DLL Func Missing";
@@ -320,4 +347,9 @@ extern "C" __declspec(dllexport) bool ConfirmTrade(char* tradeID, char* assetID)
 
 extern "C" __declspec(dllexport) void UpdateSteamAPIKey(char* key) {
     if (ptrSetSteamAPIKey) ptrSetSteamAPIKey(key);
+}
+
+extern "C" __declspec(dllexport) const char* GetSteamInventory(char* steamID) {
+    if (ptrFetchMyInventory) return ptrFetchMyInventory(steamID);
+    return "[]";
 }

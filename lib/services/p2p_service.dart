@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
@@ -33,6 +34,12 @@ typedef GetBalanceDart = double Function(Pointer<Utf8> address);
 typedef SendTxC = Int32 Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, Double amount);
 typedef SendTxDart = int Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, double amount);
 
+typedef ListAuctionItemC = Pointer<Utf8> Function(Pointer<Utf8> assetID, Double price, Int32 duration);
+typedef ListAuctionItemDart = Pointer<Utf8> Function(Pointer<Utf8> assetID, double price, int duration);
+
+typedef FetchAuctionsC = Pointer<Utf8> Function();
+typedef FetchAuctionsDart = Pointer<Utf8> Function();
+
 typedef PlaceBetC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> team, Double amount);
 typedef PlaceBetDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> team, double amount);
 
@@ -44,6 +51,9 @@ typedef ConfirmTradeDart = int Function(Pointer<Utf8> tradeID, Pointer<Utf8> ass
 
 typedef SetSteamAPIKeyC = Void Function(Pointer<Utf8> key);
 typedef SetSteamAPIKeyDart = void Function(Pointer<Utf8> key);
+
+typedef GetSteamInventoryC = Pointer<Utf8> Function(Pointer<Utf8> steamID);
+typedef GetSteamInventoryDart = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 
 class DashboardInfo {
   final bool isMounted;
@@ -69,10 +79,13 @@ class P2PService {
   late MineBlockDart _mineBlock;
   late GetBalanceDart _getBalance;
   late SendTxDart _sendTx;
+  late ListAuctionItemDart _listAuctionItem;
+  late FetchAuctionsDart _fetchAuctions;
   late PlaceBetDart _placeBet;
   late BuyItemDart _buyItem;
   late ConfirmTradeDart _confirmTrade;
   late SetSteamAPIKeyDart _setSteamAPIKey;
+  late GetSteamInventoryDart _getSteamInventory;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -98,10 +111,13 @@ class P2PService {
     _mineBlock = _lib.lookupFunction<MineBlockC, MineBlockDart>('MineBlock');
     _getBalance = _lib.lookupFunction<GetBalanceC, GetBalanceDart>('GetBalance');
     _sendTx = _lib.lookupFunction<SendTxC, SendTxDart>('SendEdenCoin');
+    _listAuctionItem = _lib.lookupFunction<ListAuctionItemC, ListAuctionItemDart>('ListAuctionItem');
+    _fetchAuctions = _lib.lookupFunction<FetchAuctionsC, FetchAuctionsDart>('FetchAuctions');
     _placeBet = _lib.lookupFunction<PlaceBetC, PlaceBetDart>('PlaceBet');
     _buyItem = _lib.lookupFunction<BuyItemC, BuyItemDart>('BuyItem');
     _confirmTrade = _lib.lookupFunction<ConfirmTradeC, ConfirmTradeDart>('ConfirmTrade');
     _setSteamAPIKey = _lib.lookupFunction<SetSteamAPIKeyC, SetSteamAPIKeyDart>('UpdateSteamAPIKey');
+    _getSteamInventory = _lib.lookupFunction<GetSteamInventoryC, GetSteamInventoryDart>('GetSteamInventory');
   }
 
   void start() {
@@ -186,6 +202,27 @@ class P2PService {
     }
   }
 
+  Future<String> listSteamItem(String assetID, double price, int durationSeconds) async {
+  if (!_isInitialized) return "Offline";
+  final aPtr = assetID.toNativeUtf8();
+  try {
+    return _listAuctionItem(aPtr, price, durationSeconds).toDartString();
+  } finally {
+    calloc.free(aPtr);
+  }
+}
+
+  Future<List<dynamic>> getActiveAuctions() async {
+    if (!_isInitialized) return [];
+    final ptr = _fetchAuctions();
+    final jsonStr = ptr.toDartString();
+    try {
+      return jsonDecode(jsonStr);
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<String> placeBet(String matchID, String team, double amount) async {
     if (!_isInitialized) return "Error: Offline";
     final mPtr = matchID.toNativeUtf8();
@@ -230,5 +267,17 @@ class P2PService {
     } finally {
       calloc.free(kPtr);
     }
+  }
+
+  Future<List<dynamic>> getSteamInventory(String steamID) async {
+    final ptrStr = steamID.toNativeUtf8();
+    final res = _getSteamInventory(ptrStr).toDartString();
+    calloc.free(ptrStr);
+    return jsonDecode(res);
+}
+
+  Future<String> listRichItem(String assetID, String name, String img, String wear, double price, int duration) async {
+      String payload = "$assetID|$name|$img|$wear";
+      return listSteamItem(payload, price, duration);
   }
 }

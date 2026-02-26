@@ -4,15 +4,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	TxTypeTransfer = "TRANSFER"
-	TxTypeBet      = "BET"
-	TxTypeEscrow   = "ESCROW_LOCK"
-	TxTypeResolve  = "RESOLVE_PAYOUT"
+	TxTypeTransfer     = "TRANSFER"
+	TxTypeBet          = "BET"
+	TxTypeEscrow       = "ESCROW_LOCK"
+	TxTypeResolve      = "RESOLVE_PAYOUT"
+	TxTypeList         = "LIST_ITEM"
+	TxTypeCloseExpired = "CLOSE_EXPIRED"
 )
 
 type Transaction struct {
@@ -32,6 +36,18 @@ type GameProof struct {
 	MaxPlayers    int      `json:"max_players"`
 	QualityScore  int      `json:"quality_score"`
 	PlayerWitness []string `json:"witnesses"`
+}
+
+type Auction struct {
+	ID        string  `json:"id"`
+	Seller    string  `json:"seller"`
+	AssetID   string  `json:"asset_id"`
+	Name      string  `json:"name"`
+	ImageURL  string  `json:"image_url"`
+	Wear      string  `json:"wear"`
+	Price     float64 `json:"price"`
+	ExpiresAt int64   `json:"expires_at"`
+	State     string  `json:"state"`
 }
 
 type Bet struct {
@@ -70,11 +86,12 @@ type Block struct {
 }
 
 type Blockchain struct {
-	Chain         []Block
-	Balances      map[string]float64
-	ActivePools   map[string]*BettingPool
-	ActiveEscrows map[string]*Escrow
-	Mutex         sync.RWMutex
+	Chain          []Block
+	Balances       map[string]float64
+	ActiveAuctions map[string]*Auction
+	ActivePools    map[string]*BettingPool
+	ActiveEscrows  map[string]*Escrow
+	Mutex          sync.RWMutex
 }
 
 var EdenChain *Blockchain
@@ -84,9 +101,10 @@ func InitializeChain() {
 		Chain: []Block{
 			{Index: 0, Timestamp: time.Now().Unix(), Hash: "GENESIS_BLOCK", PrevHash: "0"},
 		},
-		Balances:      make(map[string]float64),
-		ActivePools:   make(map[string]*BettingPool),
-		ActiveEscrows: make(map[string]*Escrow),
+		Balances:       make(map[string]float64),
+		ActiveAuctions: make(map[string]*Auction),
+		ActivePools:    make(map[string]*BettingPool),
+		ActiveEscrows:  make(map[string]*Escrow),
 	}
 }
 
@@ -116,6 +134,12 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 		case TxTypeTransfer:
 			bc.Balances[tx.Receiver] += tx.Amount
 
+		case TxTypeList:
+			bc.processListing(tx)
+
+		case TxTypeCloseExpired:
+			bc.processExpiration(tx, b.Timestamp)
+
 		case TxTypeBet:
 			bc.processBet(tx)
 
@@ -129,6 +153,47 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 
 	bc.Chain = append(bc.Chain, b)
 	return true
+}
+
+func (bc *Blockchain) processListing(tx Transaction) {
+	var assetID string
+	var duration int
+	fmt.Sscanf(tx.Payload, "%s:%d", &assetID, &duration)
+
+	parts := strings.Split(tx.Payload, "|")
+	if len(parts) < 5 {
+		return
+	}
+
+	duration, _ = strconv.Atoi(parts[4])
+
+	auction := &Auction{
+		ID:        tx.ID,
+		Seller:    tx.Sender,
+		AssetID:   parts[0],
+		Name:      parts[1],
+		ImageURL:  parts[2],
+		Wear:      parts[3],
+		Price:     tx.Amount,
+		ExpiresAt: time.Now().Unix() + int64(duration),
+		State:     "OPEN",
+	}
+
+	bc.ActiveAuctions[tx.ID] = auction
+	fmt.Printf("[Chain] New Auction Listed: %s for %.2f EDN\n", assetID, tx.Amount)
+}
+
+func (bc *Blockchain) processExpiration(tx Transaction, blockTime int64) {
+	auctionID := tx.Payload
+
+	if auction, exists := bc.ActiveAuctions[auctionID]; exists {
+		if auction.State == "OPEN" && blockTime >= auction.ExpiresAt {
+			auction.State = "EXPIRED"
+			fmt.Printf("[Chain] Auction %s finalized as EXPIRED at block time %d.\n", auctionID, blockTime)
+		} else {
+			fmt.Printf("[Chain] consensus rejected expiration for %s (Not yet time).\n", auctionID)
+		}
+	}
 }
 
 func (bc *Blockchain) processBet(tx Transaction) {

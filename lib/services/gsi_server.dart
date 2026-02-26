@@ -28,7 +28,6 @@ class GsiServer {
       return Response.ok('OK');
     });
 
-    // Listen on localhost only for security
     _server = await shelf_io.serve(app, InternetAddress.loopbackIPv4, 3000);
     print('[GSI] Listening on port 3000');
   }
@@ -38,7 +37,6 @@ class GsiServer {
 
     final phase = data['map']['phase'];
 
-    // 1. Detect Match Start
     if (phase == 'live' && !_isMatchLive) {
       print("[GSI] Match Started - Tracking for Mining...");
       _matchStart = DateTime.now();
@@ -46,20 +44,17 @@ class GsiServer {
       _uniquePlayers.clear();
     }
 
-    // 2. Track Players (Witnesses)
     if (data.containsKey('allplayers')) {
       (data['allplayers'] as Map).forEach((key, _) => _uniquePlayers.add(key));
     }
 
-    // 3. Detect Match End
     if (phase == 'gameover' && _isMatchLive) {
       _isMatchLive = false;
       final duration = DateTime.now().difference(_matchStart!).inSeconds;
       
       print("[GSI] Match Ended. Duration: ${duration}s. Witnesses: ${_uniquePlayers.length}");
       
-      // Mint Reward
-      if (duration > 60) { // Minimum 1 minute to prevent spam
+      if (duration > 60) {
         _p2p.submitMatchReward(duration, _uniquePlayers.length).then((hash) {
            print("[Mining] Block Mined! Hash: $hash");
         });
