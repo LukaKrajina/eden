@@ -1250,6 +1250,16 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                               border: const OutlineInputBorder()
                           )
                       ),
+                      const SizedBox(height: 10),
+                      TextField(
+                          controller: durationCtrl, 
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white), 
+                          decoration: InputDecoration(
+                              labelText: "Duration for ${_inventory[_selectedIndex]['name']} (seconds)",
+                              border: const OutlineInputBorder()
+                          )
+                      ),
                 ],
               ),
             ),
