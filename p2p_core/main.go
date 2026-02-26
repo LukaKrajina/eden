@@ -28,6 +28,7 @@ import "C"
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,7 +50,8 @@ import (
 // --- Steam Configuration ---
 var SteamAPIKey = os.Getenv("STEAM_API_KEY")
 
-const GSI_PORT = ":3000"
+const GSI_PORT = "127.0.0.1:3000"
+const MaxPayloadSize = 2048
 
 // --- Constants & Globals ---
 
@@ -167,6 +169,8 @@ var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var myPeerID string
+var myPrivKey string
+var myPubKey string
 
 // --- Game State Integration (GSI) Server ---
 
@@ -258,6 +262,8 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	ctx = context.Background()
 
 	InitializeChain()
+
+	InitializeWallet()
 
 	var err error
 	h, err = libp2p.New(
@@ -358,6 +364,16 @@ func SubmitGameBlock(duration C.int, playerCount C.int) *C.char {
 
 	broadcastBlock(newBlock)
 	return C.CString(newBlock.Hash)
+}
+
+func InitializeWallet() {
+	myPrivKey, myPubKey = GenerateKeyPair()
+	fmt.Println("[Wallet] Generated Keys. Public:", myPubKey)
+}
+
+//export GetWalletPubKey
+func GetWalletPubKey() string {
+	return myPubKey
 }
 
 //export GetWalletBalance
@@ -497,19 +513,31 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 }
 
 //export SendTransaction
-func SendTransaction(sender *C.char, receiver *C.char, amount C.double) C.int {
-	s := C.GoString(sender)
+func SendTransaction(receiver *C.char, amount C.double) C.int {
 	r := C.GoString(receiver)
 	amt := float64(amount)
+
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		fmt.Printf("[Error] Invalid local public key hex: %v\n", err)
+		return 0
+	}
 
 	tx := Transaction{
 		ID:        fmt.Sprintf("tx_%d", time.Now().UnixNano()),
 		Type:      TxTypeTransfer,
-		Sender:    s,
+		Sender:    myPubKey,
 		Receiver:  r,
 		Amount:    amt,
+		Payload:   "",
 		Timestamp: time.Now().Unix(),
-		Signature: "VALID",
+		PublicKey: pubKeyBytes,
+	}
+
+	err = SignTransaction(myPrivKey, &tx)
+	if err != nil {
+		fmt.Printf("[Error] Failed to sign transaction: %v\n", err)
+		return 0
 	}
 
 	newBlock := Block{
@@ -522,6 +550,7 @@ func SendTransaction(sender *C.char, receiver *C.char, amount C.double) C.int {
 
 	if EdenChain.AddBlock(newBlock) {
 		broadcastBlock(newBlock)
+		fmt.Printf("[Wallet] Sent %.2f EDN to %s (Tx: %s)\n", amt, r, tx.ID)
 		return 1
 	}
 	return 0
@@ -749,6 +778,12 @@ func readStreamLoop(s network.Stream) {
 			C.free(cPtr)
 
 			bufferPool.Put(bufPtr)
+		}
+
+		if payloadLen > MaxPayloadSize {
+			fmt.Printf("[Security] Peer sent oversized packet: %d\n", payloadLen)
+			s.Close()
+			return
 		}
 	}
 }

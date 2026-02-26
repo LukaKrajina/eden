@@ -153,7 +153,7 @@ bool LoadGoDLL() {
     static HMODULE hGo = NULL;
     if (hGo) return true;
 
-    hGo = LoadLibraryW(L"libp2p_core.dll");
+    hGo = LoadLibraryExW(L"libp2p_core.dll", NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
     if (!hGo) {
         std::cerr << "[Error] Could not find libp2p_core.dll" << std::endl;
         return false;
@@ -214,8 +214,6 @@ void ReadFromTunLoop() {
         }
     }
 }
-
-// --- Exports ---
 
 extern "C" __declspec(dllexport) void StartEngine() {
     if (!LoadGoDLL()) {

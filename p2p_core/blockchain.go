@@ -4,7 +4,9 @@ import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -33,6 +35,7 @@ type Transaction struct {
 	Timestamp int64   `json:"timestamp"`
 	Signature string  `json:"signature"`
 	PublicKey []byte  `json:"pub_key"`
+	Nonce     uint64  `json:"nonce"`
 }
 
 type GameProof struct {
@@ -96,6 +99,7 @@ type Blockchain struct {
 	ActiveAuctions map[string]*Auction
 	ActivePools    map[string]*BettingPool
 	ActiveEscrows  map[string]*Escrow
+	AccountNonces  map[string]uint64
 	Mutex          sync.RWMutex
 }
 
@@ -110,29 +114,42 @@ func InitializeChain() {
 		ActiveAuctions: make(map[string]*Auction),
 		ActivePools:    make(map[string]*BettingPool),
 		ActiveEscrows:  make(map[string]*Escrow),
+		AccountNonces:  make(map[string]uint64),
 	}
 }
 
 func (tx *Transaction) GenerateTxHash() []byte {
-	record := fmt.Sprintf("%s%s%s%f%d%s", tx.Sender, tx.PublicKey, tx.Receiver, tx.Amount, tx.Timestamp, tx.Payload)
+	record := fmt.Sprintf("%s%s%s%f%d%s%d", tx.Sender, tx.PublicKey, tx.Receiver, tx.Amount, tx.Timestamp, tx.Payload, tx.Nonce)
 	h := sha256.New()
 	h.Write([]byte(record))
 	return h.Sum(nil)
 }
 
 func VerifyTransaction(tx Transaction) bool {
-	pubKeyBytes, err := hex.DecodeString(string(tx.PublicKey))
-	if err != nil {
-		fmt.Printf("[Crypto] Invalid Public Key Hex: %v\n", err)
+	var pubKeyBytes []byte
+	if len(tx.PublicKey) > 0 {
+		pubKeyBytes = tx.PublicKey
+	} else {
 		return false
 	}
 
-	x, y := elliptic.Unmarshal(elliptic.P256(), pubKeyBytes)
-	if x == nil {
-		fmt.Printf("[Crypto] Failed to unmarshal Elliptic Curve Point\n")
+	genericPublicKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	if err != nil {
+		fmt.Printf("[Crypto] Failed to parse PKIX Public Key: %v\n", err)
 		return false
 	}
-	rawPubKey := ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
+
+	pubKey, ok := genericPublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		fmt.Printf("[Crypto] Public Key is not ECDSA\n")
+		return false
+	}
+
+	derivedAddress := hex.EncodeToString(tx.PublicKey)
+	if derivedAddress != tx.Sender {
+		fmt.Printf("[Crypto] FRAUD: Public Key %s does not belong to Sender %s\n", derivedAddress, tx.Sender)
+		return false
+	}
 
 	sigBytes, err := hex.DecodeString(tx.Signature)
 	if err != nil || len(sigBytes) == 0 {
@@ -142,9 +159,8 @@ func VerifyTransaction(tx Transaction) bool {
 
 	r := big.NewInt(0).SetBytes(sigBytes[:len(sigBytes)/2])
 	s := big.NewInt(0).SetBytes(sigBytes[len(sigBytes)/2:])
-
 	hash := tx.GenerateTxHash()
-	return ecdsa.Verify(&rawPubKey, hash, r, s)
+	return ecdsa.Verify(pubKey, hash, r, s)
 }
 
 func (bc *Blockchain) AddBlock(b Block) bool {
@@ -162,13 +178,27 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 	}
 
 	for _, tx := range b.Transactions {
+
+		expectedNonce := bc.AccountNonces[tx.Sender]
+
+		if tx.Nonce != expectedNonce+1 {
+			fmt.Printf("[Chain] REJECTED: Invalid Nonce. Expected %d, Got %d\n", expectedNonce+1, tx.Nonce)
+			return false
+		}
+
 		if tx.Sender != "SYSTEM_MINT" {
+			if !VerifyTransaction(tx) {
+				fmt.Printf("[Chain] REJECTED: Invalid Signature for TX %s\n", tx.ID)
+				return false
+			}
+
 			if bc.Balances[tx.Sender] < tx.Amount {
-				fmt.Printf("[Chain] Invalid TX: Insufficient funds for %s\n", tx.Sender)
+				fmt.Printf("[Chain] REJECTED: Insufficient funds for %s\n", tx.Sender)
 				return false
 			}
 			bc.Balances[tx.Sender] -= tx.Amount
 		}
+
 		switch tx.Type {
 		case TxTypeTransfer:
 			bc.Balances[tx.Receiver] += tx.Amount
@@ -188,6 +218,8 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 		case TxTypeResolve:
 			bc.Balances[tx.Receiver] += tx.Amount
 		}
+
+		bc.AccountNonces[tx.Sender]++
 	}
 
 	bc.Chain = append(bc.Chain, b)
@@ -398,7 +430,7 @@ func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {
 		Receiver:  minerID,
 		Amount:    rewardAmount,
 		Timestamp: time.Now().Unix(),
-		Signature: "CONSENSUS_VERIFIED",
+		Signature: "MINER_REWARD",
 	}
 
 	newBlock := Block{
@@ -443,4 +475,48 @@ func (bc *Blockchain) GetBalance(address string) float64 {
 	bc.Mutex.RLock()
 	defer bc.Mutex.RUnlock()
 	return bc.Balances[address]
+}
+
+func GenerateKeyPair() (string, string) {
+	privKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	privBytes, err := x509.MarshalECPrivateKey(privKey)
+	if err != nil {
+		return "", ""
+	}
+	privHex := hex.EncodeToString(privBytes)
+
+	pubBytes, err := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+	if err != nil {
+		return "", ""
+	}
+	pubHex := hex.EncodeToString(pubBytes)
+
+	return privHex, pubHex
+}
+
+func SignTransaction(privKeyHex string, tx *Transaction) error {
+	privBytes, err := hex.DecodeString(privKeyHex)
+	if err != nil {
+		return fmt.Errorf("invalid private key hex")
+	}
+
+	privKey, err := x509.ParseECPrivateKey(privBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse EC private key: %v", err)
+	}
+
+	hash := tx.GenerateTxHash()
+	r, s, err := ecdsa.Sign(rand.Reader, privKey, hash)
+	if err != nil {
+		return err
+	}
+
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+	sigBytes := make([]byte, 64)
+	copy(sigBytes[32-len(rBytes):32], rBytes)
+	copy(sigBytes[64-len(sBytes):64], sBytes)
+	tx.Signature = hex.EncodeToString(sigBytes)
+	return nil
 }
