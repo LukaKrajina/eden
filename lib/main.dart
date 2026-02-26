@@ -1240,7 +1240,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  if(_selectedIndex != -1)
+                  if(_selectedIndex != -1) ...[
                       TextField(
                           controller: priceCtrl, 
                           keyboardType: TextInputType.number,
@@ -1260,6 +1260,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                               border: const OutlineInputBorder()
                           )
                       ),
+                    ]
                 ],
               ),
             ),
