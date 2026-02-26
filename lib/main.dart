@@ -27,6 +27,7 @@ const Color kFaceitBorder = Color(0xFF333333);
 String g_CS2Path = "";
 String g_dbUser = "postgres";
 String g_DbPassword = "password";
+String g_steamIDKey = "";
 String g_steamApiKey = "";
 final ValueNotifier<String> appLanguageNotifier = ValueNotifier("English");
 late DemoService demo;
@@ -76,6 +77,7 @@ Future<void> _loadSettings() async {
       g_CS2Path = map['cs2_path'] ?? "";
       g_dbUser = map['db_user'] ?? "postgres";
       g_DbPassword = map['db_password'] ?? "password";
+      g_steamIDKey = map['steam_id_key'] ?? "";
       g_steamApiKey = map['steam_api_key'] ?? "";
       appLanguageNotifier.value = map['language'] ?? "English";
     }
@@ -91,6 +93,7 @@ Future<void> _saveSettings() async {
       'cs2_path': g_CS2Path,
       'db_user': g_dbUser,
       'db_password': g_DbPassword,
+      'steam_id_key': g_steamIDKey,
       'steam_api_key': g_steamApiKey,
       'language': appLanguageNotifier.value,
     };
@@ -189,6 +192,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _cs2PathController = TextEditingController();
   final TextEditingController _dbUserController = TextEditingController();
   final TextEditingController _dbPassController = TextEditingController();
+  final TextEditingController _steamIDKeyController = TextEditingController();
   final TextEditingController _steamApiKeyController = TextEditingController();
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
@@ -247,6 +251,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _cs2PathController.text = g_CS2Path;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
+    _steamIDKeyController.text = g_steamIDKey;
     _steamApiKeyController.text = g_steamApiKey;
 
     _scoreAcquirer();
@@ -1491,6 +1496,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     String tempLanguage = appLanguageNotifier.value;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
+    _steamIDKeyController.text = g_steamIDKey;
     _steamApiKeyController.text = g_steamApiKey;
     
     showDialog(
@@ -1521,6 +1527,18 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                     ),
                   ), 
                   const SizedBox(height: 20),
+
+                  // Steam ID Key Input
+                  const Text("Steam 64 ID (For Trade)", style: TextStyle(color: Colors.grey)), 
+                    TextField(
+                      controller: _steamIDKeyController, 
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                      ),
+                    ), 
+                    const SizedBox(height: 20),
 
                   // Steam API Key Input
                   const Text("Steam Web API Key", style: TextStyle(color: Colors.grey)), 
@@ -1601,6 +1619,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                           g_CS2Path = _cs2PathController.text;
                           g_dbUser = _dbUserController.text;
                           g_DbPassword = _dbPassController.text;
+                          g_steamIDKey = _steamIDKeyController.text;
                           g_steamApiKey = _steamApiKeyController.text;
                           appLanguageNotifier.value = tempLanguage;
                           
@@ -1618,7 +1637,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                           setState(() {});
 
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Settings Saved. Restart app for DB changes to fully take effect."))
+                            const SnackBar(content: Text("Settings Saved. Restart app for any changes to fully take effect."))
                           );
                         }, 
                         child: const Text("SUBMIT")
