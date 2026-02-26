@@ -201,6 +201,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   Timer? _steamIdTimer;
+  Timer? _pollMatchesTimer;
   String _myPeerID = "";
   String _mySteamID = "";
   
@@ -232,6 +233,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   // Auction Data
   List<dynamic> _realAuctions = [];
 
+  // live Match Data
+  List<dynamic> _liveMatches = [];
+
   final List<String> _maps = [
     "de_dust2", "de_mirage", "de_inferno", "de_nuke", 
     "de_overpass", "de_vertigo", "de_ancient", "de_anubis"
@@ -261,6 +265,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
     _steamIdTimer = Timer.periodic(const Duration(seconds: 2), (_) => _steamIdAcquirer());
     
+    _pollLiveMatches();
+    _pollMatchesTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pollLiveMatches());
+
     _setGameMode("MATCHMAKING");
 
     _friends.add(Friend(name: "TestPlayer", peerID: "QmHashTest123", level: "8", skillScore: 2100, edn: 50.0));
@@ -270,6 +277,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   void dispose() {
     _scoreTimer?.cancel();
     _steamIdTimer?.cancel();
+    _pollMatchesTimer?.cancel();
     if(_refreshTimer != null && _refreshTimer!.isActive){
       _refreshTimer?.cancel();
     }
@@ -339,6 +347,15 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       String id = await widget.p2pService.getMyID();
       setState(() => _myPeerID = id);
     }
+  }
+
+  void _pollLiveMatches() {
+    Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (_currentView == 4 && _selectedShopTab == 1) { 
+        final matches = await widget.p2pService.getLiveMatches();
+        if (mounted) setState(() => _liveMatches = matches);
+      }
+    });
   }
 
   void _addFriend() {
@@ -1425,19 +1442,58 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  Widget _buildBettingContent() {
-    // Mock Data for Betting
-    final matches = [
-      {"id": "m1", "t1": "NaVi", "t2": "FaZe", "odds1": 1.5, "odds2": 2.2, "date": "LIVE"},
-      {"id": "m2", "t1": "G2", "t2": "Vitality", "odds1": 1.8, "odds2": 1.8, "date": "18:00"},
-      {"id": "m3", "t1": "Liquid", "t2": "Cloud9", "odds1": 2.5, "odds2": 1.4, "date": "20:00"},
-    ];
+Future<void> _placeBet(String matchID, String team, String amountStr, double odds) async {
+    double amt = double.tryParse(amountStr) ?? 0.0;
+    if (amt <= 0) return;
+    
+    String res = await widget.p2pService.placeBet(matchID, team, amt);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(res.contains("Error") ? "Bet Failed" : "Bet Placed! Potential Payout: ${(amt * odds).toStringAsFixed(2)} EDN"),
+        backgroundColor: res.contains("Error") ? Colors.red : Colors.green,
+      ));
+    }
+  }
+
+Widget _buildBettingContent() {
+    if (_liveMatches.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.sports_esports_outlined, size: 64, color: Colors.white10),
+            const SizedBox(height: 16),
+            Text("No live matches found.", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5))),
+            const SizedBox(height: 8),
+            const Text("Servers broadcast automatically when live.", style: TextStyle(color: Colors.grey, fontSize: 10)),
+          ],
+        ),
+      );
+    }
 
     return ListView.builder(
-      itemCount: matches.length,
+      itemCount: _liveMatches.length,
       itemBuilder: (ctx, i) {
-        final m = matches[i];
+        final m = _liveMatches[i];
         final amountCtrl = TextEditingController();
+
+        // Calculate dynamic odds based on score (simplified logic)
+        int scoreCT = m['score_ct'];
+        int scoreT = m['score_t'];
+        int total = scoreCT + scoreT;
+        double oddsCT = 1.8; 
+        double oddsT = 1.8;
+        
+        // Simple odds shift based on lead
+        if (total > 0) {
+          if (scoreCT > scoreT) {
+            oddsCT = 1.2 + (scoreT / total); // Lower return for winner
+            oddsT = 2.0 + ((scoreCT - scoreT) * 0.1); // Higher return for loser
+          } else if (scoreT > scoreCT) {
+            oddsT = 1.2 + (scoreCT / total);
+            oddsCT = 2.0 + ((scoreT - scoreCT) * 0.1);
+          }
+        }
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -1447,65 +1503,68 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             border: Border.all(color: kFaceitBorder),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: m['date'] == "LIVE" ? Colors.red : Colors.grey[800], borderRadius: BorderRadius.circular(4)),
-                child: Text(m['date'] as String, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Text(m['t1'] as String, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Text("VS", style: TextStyle(color: Colors.grey)),
-                    Text(m['t2'] as String, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              SizedBox(
-                width: 100,
-                child: TextField(
-                  controller: amountCtrl,
-                  decoration: const InputDecoration(
-                    hintText: "0",
-                    suffixText: "EDN",
-                    isDense: true,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                    child: const Text("LIVE", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
-                  keyboardType: TextInputType.number,
-                ),
+                  const Spacer(),
+                  Text(m['map_name'].toString().toUpperCase(), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
               ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: () async {
-                   double amt = double.tryParse(amountCtrl.text) ?? 0.0;
-                   if (amt > 0) {
-                     String res = await widget.p2pService.placeBet(m['id'] as String, m['t1'] as String, amt);
-                     if(mounted) {
-                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-                     }
-                   }
-                },
-                child: Text("x${m['odds1']}"),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      const Text("CT", style: TextStyle(color: Color(0xFF5D79AE), fontWeight: FontWeight.bold)),
+                      Text("${m['score_ct']}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const Text("VS", style: TextStyle(color: Colors.grey)),
+                  Column(
+                    children: [
+                      const Text("T", style: TextStyle(color: Color(0xFFDE9B35), fontWeight: FontWeight.bold)),
+                      Text("${m['score_t']}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                onPressed: () async {
-                   double amt = double.tryParse(amountCtrl.text) ?? 0.0;
-                   if (amt > 0) {
-                     String res = await widget.p2pService.placeBet(m['id'] as String, m['t2'] as String, amt);
-                     if(mounted) {
-                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-                     }
-                   }
-                },
-                child: Text("x${m['odds2']}"),
-              ),
+              const Divider(color: kFaceitBorder, height: 24),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: amountCtrl,
+                      decoration: const InputDecoration(hintText: "0", suffixText: "EDN", isDense: true),
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5D79AE)),
+                      onPressed: () => _placeBet(m['match_id'], "CT", amountCtrl.text, oddsCT),
+                      child: Text("CT x${oddsCT.toStringAsFixed(2)}"),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDE9B35)),
+                      onPressed: () => _placeBet(m['match_id'], "T", amountCtrl.text, oddsT),
+                      child: Text("T x${oddsT.toStringAsFixed(2)}"),
+                    ),
+                  ),
+                ],
+              )
             ],
           ),
         );

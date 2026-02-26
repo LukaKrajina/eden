@@ -107,6 +107,7 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
+extern char* GetNetworkMatches(void);
 extern char* StartEdenNode(char* virtualIP);
 extern void StopEdenNode(void);
 extern char* SubmitGameBlock(int duration, int playerCount);

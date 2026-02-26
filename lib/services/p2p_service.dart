@@ -34,6 +34,9 @@ typedef GetBalanceDart = double Function(Pointer<Utf8> address);
 typedef SendTxC = Int32 Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, Double amount);
 typedef SendTxDart = int Function(Pointer<Utf8> sender, Pointer<Utf8> receiver, double amount);
 
+typedef FetchLiveMatchesC = Pointer<Utf8> Function();
+typedef FetchLiveMatchesDart = Pointer<Utf8> Function();
+
 typedef ListAuctionItemC = Pointer<Utf8> Function(Pointer<Utf8> assetID, Double price, Int32 duration);
 typedef ListAuctionItemDart = Pointer<Utf8> Function(Pointer<Utf8> assetID, double price, int duration);
 
@@ -79,6 +82,7 @@ class P2PService {
   late MineBlockDart _mineBlock;
   late GetBalanceDart _getBalance;
   late SendTxDart _sendTx;
+  late FetchLiveMatchesDart _fetchLiveMatches;
   late ListAuctionItemDart _listAuctionItem;
   late FetchAuctionsDart _fetchAuctions;
   late PlaceBetDart _placeBet;
@@ -111,6 +115,7 @@ class P2PService {
     _mineBlock = _lib.lookupFunction<MineBlockC, MineBlockDart>('MineBlock');
     _getBalance = _lib.lookupFunction<GetBalanceC, GetBalanceDart>('GetBalance');
     _sendTx = _lib.lookupFunction<SendTxC, SendTxDart>('SendEdenCoin');
+    _fetchLiveMatches = _lib.lookupFunction<FetchLiveMatchesC, FetchLiveMatchesDart>('FetchLiveMatches');
     _listAuctionItem = _lib.lookupFunction<ListAuctionItemC, ListAuctionItemDart>('ListAuctionItem');
     _fetchAuctions = _lib.lookupFunction<FetchAuctionsC, FetchAuctionsDart>('FetchAuctions');
     _placeBet = _lib.lookupFunction<PlaceBetC, PlaceBetDart>('PlaceBet');
@@ -274,10 +279,22 @@ class P2PService {
     final res = _getSteamInventory(ptrStr).toDartString();
     calloc.free(ptrStr);
     return jsonDecode(res);
-}
+  }
 
   Future<String> listRichItem(String assetID, String name, String img, String wear, double price, int duration) async {
       String payload = "$assetID|$name|$img|$wear";
       return listSteamItem(payload, price, duration);
+  }
+
+  Future<List<dynamic>> getLiveMatches() async {
+    if (!_isInitialized) return [];
+    final ptr = _fetchLiveMatches();
+    final jsonStr = ptr.toDartString();
+    try {
+      return jsonDecode(jsonStr);
+    } catch (e) {
+      print("Error parsing matches: $e");
+      return [];
+    }
   }
 }

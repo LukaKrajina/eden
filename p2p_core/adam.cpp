@@ -48,6 +48,7 @@ typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
 typedef char* (*AutoConnectToPeersFunc)();
 typedef int (*IsPeerAliveFunc)();
+typedef char* (*GetNetworkMatchesFunc)();
 typedef char* (*FetchMyInventoryFunc)(char* steamID);
 typedef char* (*ListSteamItemFunc)(char* assetID, double price, int duration);
 typedef char* (*GetOpenAuctionsFunc)();
@@ -68,6 +69,7 @@ StopNodeFunc ptrStopNode = nullptr;
 GetMyPeerIDFunc ptrGetMyPeerID = nullptr;
 AutoConnectToPeersFunc ptrAutoConnect = nullptr;
 IsPeerAliveFunc ptrIsPeerAlive = nullptr;
+static GetNetworkMatchesFunc ptrGetNetworkMatches = nullptr;
 GoPacketCallback ptrSendToP2P = nullptr;
 FetchMyInventoryFunc ptrFetchMyInventory = nullptr;
 ListSteamItemFunc ptrListSteamItem = nullptr;
@@ -77,6 +79,7 @@ PlaceBetFunc ptrPlaceBet = nullptr;
 CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
+static void (*ptrFreeString)(char*) = nullptr;
 
 // --- Forward Declarations ---
 bool LoadWintun();
@@ -165,6 +168,7 @@ bool LoadGoDLL() {
     ptrGetMyPeerID = (GetMyPeerIDFunc)GetProcAddress(hGo, "GetMyPeerID");
     ptrAutoConnect = (AutoConnectToPeersFunc)GetProcAddress(hGo, "AutoConnectToPeers");
     ptrIsPeerAlive = (IsPeerAliveFunc)GetProcAddress(hGo, "IsPeerAlive");
+    ptrGetNetworkMatches = (GetNetworkMatchesFunc)GetProcAddress(hGo, "GetNetworkMatches");
     ptrSubmitGameBlock = (SubmitGameBlockFunc)GetProcAddress(hGo, "SubmitGameBlock");
     ptrGetWalletBalance = (GetWalletBalanceFunc)GetProcAddress(hGo, "GetWalletBalance");
     ptrSendTransaction = (SendTransactionFunc)GetProcAddress(hGo, "SendTransaction");
@@ -177,6 +181,7 @@ bool LoadGoDLL() {
     ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
     ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
+    ptrFreeString = (void(*)(char*))GetProcAddress(hGo, "FreeString");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -239,8 +244,11 @@ extern "C" __declspec(dllexport) void StartEngine() {
 }
 
 extern "C" __declspec(dllexport) const char* GetIPForPeer(const char* peerID) {
-    if (ptrGetIPForPeer) return ptrGetIPForPeer(peerID);
-    return "";
+    static std::string cache;
+    char* res = ptrGetIPForPeer(peerID);
+    cache = res;
+    ptrFreeString(res);
+    return cache.c_str();
 }
 
 extern "C" __declspec(dllexport) void StopEngine() {
@@ -311,6 +319,11 @@ extern "C" __declspec(dllexport) double GetBalance(char* address) {
 extern "C" __declspec(dllexport) int SendEdenCoin(char* sender, char* receiver, double amount) {
     if (ptrSendTransaction) return ptrSendTransaction(sender, receiver, amount);
     return 0;
+}
+
+extern "C" __declspec(dllexport) const char* FetchLiveMatches() {
+    if (ptrGetNetworkMatches) return ptrGetNetworkMatches();
+    return "[]";
 }
 
 extern "C" __declspec(dllexport) const char* ListAuctionItem(char* assetID, double price, int duration) {

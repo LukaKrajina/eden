@@ -1,9 +1,13 @@
 package main
 
 import (
+	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +32,7 @@ type Transaction struct {
 	Payload   string  `json:"payload"`
 	Timestamp int64   `json:"timestamp"`
 	Signature string  `json:"signature"`
+	PublicKey []byte  `json:"pub_key"`
 }
 
 type GameProof struct {
@@ -106,6 +111,40 @@ func InitializeChain() {
 		ActivePools:    make(map[string]*BettingPool),
 		ActiveEscrows:  make(map[string]*Escrow),
 	}
+}
+
+func (tx *Transaction) GenerateTxHash() []byte {
+	record := fmt.Sprintf("%s%s%s%f%d%s", tx.Sender, tx.PublicKey, tx.Receiver, tx.Amount, tx.Timestamp, tx.Payload)
+	h := sha256.New()
+	h.Write([]byte(record))
+	return h.Sum(nil)
+}
+
+func VerifyTransaction(tx Transaction) bool {
+	pubKeyBytes, err := hex.DecodeString(string(tx.PublicKey))
+	if err != nil {
+		fmt.Printf("[Crypto] Invalid Public Key Hex: %v\n", err)
+		return false
+	}
+
+	x, y := elliptic.Unmarshal(elliptic.P256(), pubKeyBytes)
+	if x == nil {
+		fmt.Printf("[Crypto] Failed to unmarshal Elliptic Curve Point\n")
+		return false
+	}
+	rawPubKey := ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
+
+	sigBytes, err := hex.DecodeString(tx.Signature)
+	if err != nil || len(sigBytes) == 0 {
+		fmt.Printf("[Crypto] Invalid Signature Hex\n")
+		return false
+	}
+
+	r := big.NewInt(0).SetBytes(sigBytes[:len(sigBytes)/2])
+	s := big.NewInt(0).SetBytes(sigBytes[len(sigBytes)/2:])
+
+	hash := tx.GenerateTxHash()
+	return ecdsa.Verify(&rawPubKey, hash, r, s)
 }
 
 func (bc *Blockchain) AddBlock(b Block) bool {
@@ -317,6 +356,32 @@ func (bc *Blockchain) SettleEscrow(tradeID string) *Transaction {
 		Amount:    escrow.Amount,
 		Timestamp: time.Now().Unix(),
 	}
+}
+
+func (bc *Blockchain) VerifyTxSignature(tx Transaction) bool {
+	msg := fmt.Sprintf("%s%s%f%d", tx.Sender, tx.Receiver, tx.Amount, tx.Timestamp)
+	hash := sha256.Sum256([]byte(msg))
+	sigBytes, err := hex.DecodeString(tx.Signature)
+	if err != nil {
+		return false
+	}
+
+	if len(sigBytes) != 64 {
+		return false
+	}
+
+	_, err = ecdh.P256().NewPublicKey(tx.PublicKey)
+	if err != nil {
+		return false
+	}
+
+	x := new(big.Int).SetBytes(tx.PublicKey[1:33])
+	y := new(big.Int).SetBytes(tx.PublicKey[33:])
+	pubKey := ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
+	r := new(big.Int).SetBytes(sigBytes[:32])
+	s := new(big.Int).SetBytes(sigBytes[32:])
+
+	return ecdsa.Verify(&pubKey, hash[:], r, s)
 }
 
 func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {

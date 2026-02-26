@@ -27,6 +27,7 @@ import "C"
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,9 @@ var (
 	blockTopic     *pubsub.Topic
 	currentMatchID string
 	bettingTopic   *pubsub.Topic
+	matchFeedTopic *pubsub.Topic
+	networkMatches = make(map[string]MatchAnnouncement)
+	matchesMutex   sync.RWMutex
 
 	bufferPool = sync.Pool{
 		New: func() interface{} {
@@ -93,7 +97,7 @@ type GSIState struct {
 		Timestamp int    `json:"timestamp"`
 	} `json:"provider"`
 	Map struct {
-		Phase  string `json:"phase"` // "live", "gameover"
+		Phase  string `json:"phase"`
 		Name   string `json:"name"`
 		TeamCT struct {
 			Score int `json:"score"`
@@ -149,6 +153,16 @@ type RichItem struct {
 	Quality  string `json:"quality"`
 }
 
+type MatchAnnouncement struct {
+	MatchID   string `json:"match_id"`
+	HostID    string `json:"host_id"`
+	MapName   string `json:"map_name"`
+	ScoreCT   int    `json:"score_ct"`
+	ScoreT    int    `json:"score_t"`
+	Phase     string `json:"phase"`
+	Timestamp int64  `json:"timestamp"`
+}
+
 var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
@@ -167,6 +181,26 @@ func StartGSIServer() {
 		json.Unmarshal(body, &state)
 
 		w.WriteHeader(http.StatusOK)
+
+		if currentMatchID != "" && state.Map.Phase == "live" {
+			if time.Now().Unix()%5 == 0 {
+				ann := MatchAnnouncement{
+					MatchID:   currentMatchID,
+					HostID:    h.ID().String(),
+					MapName:   state.Map.Name,
+					ScoreCT:   state.Map.TeamCT.Score,
+					ScoreT:    state.Map.TeamT.Score,
+					Phase:     "live",
+					Timestamp: time.Now().Unix(),
+				}
+
+				if data, err := json.Marshal(ann); err == nil {
+					if matchFeedTopic != nil {
+						matchFeedTopic.Publish(ctx, data)
+					}
+				}
+			}
+		}
 
 		if state.Map.Phase == "gameover" && currentMatchID != "" {
 			winningTeam := "CT"
@@ -195,6 +229,26 @@ func StartGSIServer() {
 
 	go http.ListenAndServe(GSI_PORT, nil)
 	fmt.Printf("[GSI] Oracle listening on %s\n", GSI_PORT)
+}
+
+//export GetNetworkMatches
+func GetNetworkMatches() *C.char {
+	matchesMutex.RLock()
+	defer matchesMutex.RUnlock()
+
+	var active []MatchAnnouncement
+	now := time.Now().Unix()
+
+	for id, m := range networkMatches {
+		if now-m.Timestamp < 60 {
+			active = append(active, m)
+		} else {
+			delete(networkMatches, id)
+		}
+	}
+
+	data, _ := json.Marshal(active)
+	return C.CString(string(data))
 }
 
 // --- CGO Exports: Node Management ---
@@ -325,7 +379,7 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 		Sender:    h.ID().String(),
 		Receiver:  "MARKETPLACE",
 		Amount:    p,
-		Payload:   fmt.Sprintf("%s:%d", aID, dur),
+		Payload:   fmt.Sprintf("%s|%d", aID, dur),
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -553,7 +607,6 @@ func SetSteamAPIKey(key *C.char) {
 //export FetchMyInventory
 func FetchMyInventory(steamID *C.char) *C.char {
 	sID := C.GoString(steamID)
-	// Public Inventory Endpoint (CS2 AppID: 730, ContextID: 2)
 	url := fmt.Sprintf("https://steamcommunity.com/inventory/%s/730/2?l=english&count=100", sID)
 
 	resp, err := http.Get(url)
@@ -766,6 +819,29 @@ func setupPubSub() {
 			}
 		}
 	}()
+
+	matchFeedTopic, _ = pubSub.Join("eden-matches")
+	matchSub, _ := matchFeedTopic.Subscribe()
+	go func() {
+		for {
+			msg, err := matchSub.Next(ctx)
+			if err != nil {
+				return
+			}
+			if msg.ReceivedFrom == h.ID() {
+				continue
+			}
+
+			var ann MatchAnnouncement
+			if err := json.Unmarshal(msg.Data, &ann); err == nil {
+				matchesMutex.Lock()
+				if time.Now().Unix()-ann.Timestamp < 60 {
+					networkMatches[ann.MatchID] = ann
+				}
+				matchesMutex.Unlock()
+			}
+		}
+	}()
 }
 
 func broadcastBlock(b Block) {
@@ -775,8 +851,6 @@ func broadcastBlock(b Block) {
 	data, _ := json.Marshal(b)
 	blockTopic.Publish(ctx, data)
 }
-
-// --- Helpers ---
 
 //export GetMyPeerID
 func GetMyPeerID() *C.char {
@@ -817,11 +891,13 @@ func GetIPForPeer(peerIDStr *C.char) *C.char {
 }
 
 func getIPFromPeerID(pid string) string {
-	sum := 0
-	for _, char := range pid {
-		sum += int(char)
-	}
-	return fmt.Sprintf("10.6.0.%d", (sum%250)+2)
+	h := sha256.Sum256([]byte(pid))
+	return fmt.Sprintf("10.%d.%d.%d", h[0], h[1], h[2])
+}
+
+//export FreeString
+func FreeString(str *C.char) {
+	C.free(unsafe.Pointer(str))
 }
 
 func main() {}
