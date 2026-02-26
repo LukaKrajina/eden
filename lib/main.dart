@@ -200,6 +200,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   // State
   Timer? _refreshTimer;
   Timer? _scoreTimer;
+  Timer? _steamIdTimer;
   String _myPeerID = "";
   String _mySteamID = "";
   
@@ -255,8 +256,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _steamApiKeyController.text = g_steamApiKey;
 
     _scoreAcquirer();
-    _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
+    _steamIdAcquirer();
 
+    _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
+    _steamIdTimer = Timer.periodic(const Duration(seconds: 2), (_) => _steamIdAcquirer());
+    
     _setGameMode("MATCHMAKING");
 
     _friends.add(Friend(name: "TestPlayer", peerID: "QmHashTest123", level: "8", skillScore: 2100, edn: 50.0));
@@ -265,6 +269,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   @override
   void dispose() {
     _scoreTimer?.cancel();
+    _steamIdTimer?.cancel();
     if(_refreshTimer != null && _refreshTimer!.isActive){
       _refreshTimer?.cancel();
     }
@@ -322,6 +327,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         });
       }
     };
+  }
+
+  Future<void>_steamIdAcquirer() async {
+    String steamID = g_steamIDKey;
+    setState(() => _mySteamID = steamID);
   }
 
   Future<void> _fetchPeerID() async {
