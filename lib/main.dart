@@ -532,7 +532,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildProfileInfoItem(_lgpkg.get("FriendCode"), _getFriendCode()),
-                    _buildProfileInfoItem(_lgpkg.get("PeerID"), _myPeerID.length > 8 ? "${_myPeerID.substring(0,8)}..." : _myPeerID),
+                    _buildProfileInfoItem(_lgpkg.get("PeerID"),
+                     _myPeerID.length > 8 ? "${_myPeerID.substring(0,8)}..." : _myPeerID,
+                     copyValue: _myPeerID),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -552,13 +554,29 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  Widget _buildProfileInfoItem(String label, String value) {
+  Widget _buildProfileInfoItem(String label, String value, {String? copyValue}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(color: kFaceitTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         SelectableText(value, style: const TextStyle(color: kFaceitOrange, fontSize: 16, fontFamily: "monospace", fontWeight: FontWeight.bold)),
+        if (copyValue != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: copyValue));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(_lgpkg.get("CopiedClipboard") ?? "Copied to Clipboard"),
+                    duration: const Duration(seconds: 1),
+                    backgroundColor: kFaceitOrange,
+                  )
+                );
+              },
+              child: const Icon(Icons.copy, size: 16, color: kFaceitTextDim),
+            ),
+          ]
       ],
     );
   }
