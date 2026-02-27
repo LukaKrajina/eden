@@ -57,6 +57,9 @@ typedef char* (*PlaceBetFunc)(char* matchID, char* team, double amount);
 typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
 typedef void (*SetSteamAPIKeyFunc)(char* key);
+typedef char* (*GenerateFriendCodeFunc)();
+typedef char* (*AddFriendFunc)(char* code);
+typedef char* (*FetchFriendListFunc)();
 
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
 GetWalletBalanceFunc ptrGetWalletBalance = nullptr;
@@ -81,12 +84,12 @@ CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
 static void (*ptrFreeString)(char*) = nullptr;
+GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
+AddFriendFunc ptrAddFriend = nullptr;
+FetchFriendListFunc ptrFetchFriendList = nullptr;
 
-// --- Forward Declarations ---
 bool LoadWintun();
 void ReadFromTunLoop();
-
-// --- Wintun Logic ---
 
 extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     if (!LoadWintun()) return -1;
@@ -184,6 +187,9 @@ bool LoadGoDLL() {
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
     ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
     ptrFreeString = (void(*)(char*))GetProcAddress(hGo, "FreeString");
+    ptrGenerateFriendCode = (GenerateFriendCodeFunc)GetProcAddress(hGo, "GenerateAndRegisterFriendCode");
+    ptrAddFriend = (AddFriendFunc)GetProcAddress(hGo, "AddFriendByCode");
+    ptrFetchFriendList = (FetchFriendListFunc)GetProcAddress(hGo, "FetchFriendList");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -375,4 +381,19 @@ extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, ch
 extern "C" __declspec(dllexport) const char* GetMyPublicKey() {
     if (ptrGetWalletPubKey) return ptrGetWalletPubKey();
     return "";
+}
+
+extern "C" __declspec(dllexport) const char* RegisterAndGetFriendCode() {
+    if (ptrGenerateFriendCode) return ptrGenerateFriendCode();
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* AddFriend(char* code) {
+    if (ptrAddFriend) return ptrAddFriend(code);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* GetFriends() {
+    if (ptrFetchFriendList) return ptrFetchFriendList();
+    return "[]";
 }

@@ -27,7 +27,10 @@ import "C"
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -116,6 +119,14 @@ type GSIState struct {
 	} `json:"map"`
 }
 
+type FriendInfo struct {
+	Name       string `json:"name"`
+	PeerID     string `json:"peer_id"`
+	FriendCode string `json:"friend_code"`
+	IsOnline   bool   `json:"is_online"`
+	LastSeen   int64  `json:"last_seen"`
+}
+
 type SyncRequest struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
@@ -185,12 +196,16 @@ type MatchAnnouncement struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+var MyFriends = make(map[string]FriendInfo)
+var friendMutex sync.RWMutex
 var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var myPeerID string
 var myPrivKey string
 var myPubKey string
+
+var FriendSystemKey = []byte("")
 
 func StartGSIServer() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +281,135 @@ func StartGSIServer() {
 
 	go http.ListenAndServe(GSI_PORT, nil)
 	fmt.Printf("[GSI] Oracle listening on %s\n", GSI_PORT)
+}
+
+func EncryptFriendCode(peerID string) string {
+	block, err := aes.NewCipher(FriendSystemKey)
+	if err != nil {
+		panic(err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err)
+	}
+
+	hash := sha256.Sum256([]byte(peerID))
+	nonceSize := gcm.NonceSize()
+	nonce := make([]byte, nonceSize)
+	copy(nonce, hash[:nonceSize])
+	ciphertext := gcm.Seal(nonce, nonce, []byte(peerID), nil)
+	return base64.URLEncoding.EncodeToString(ciphertext)
+}
+
+func DecryptFriendCode(code string) (string, error) {
+	data, err := base64.URLEncoding.DecodeString(code)
+	if err != nil {
+		return "", err
+	}
+
+	block, _ := aes.NewCipher(FriendSystemKey)
+	gcm, _ := cipher.NewGCM(block)
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return "", fmt.Errorf("invalid code")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}
+
+//export GenerateAndRegisterFriendCode
+func GenerateAndRegisterFriendCode() *C.char {
+	code := EncryptFriendCode(h.ID().String())
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("reg_%d", time.Now().UnixNano()),
+		Type:      TxTypeRegisterFriend,
+		Sender:    h.ID().String(),
+		Receiver:  "FRIEND_REGISTRY",
+		Amount:    0,
+		Payload:   code,
+		Timestamp: time.Now().Unix(),
+	}
+
+	SignTransaction(myPrivKey, &tx)
+
+	EdenChain.Mutex.RLock()
+	lastIndex := EdenChain.LastBlock.Index
+	prevHash := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	newBlock := Block{
+		Index:        lastIndex + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     prevHash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString(code)
+	}
+	return C.CString("Error: Chain Rejected")
+}
+
+//export AddFriendByCode
+func AddFriendByCode(code *C.char) *C.char {
+	cStr := C.GoString(code)
+
+	peerID, err := DecryptFriendCode(cStr)
+	if err != nil {
+		return C.CString("Error: Invalid Code")
+	}
+
+	EdenChain.Mutex.RLock()
+	registeredOwner, exists := EdenChain.FriendRegistry[cStr]
+	EdenChain.Mutex.RUnlock()
+
+	if !exists {
+		return C.CString("Error: Friend Code not found on blockchain. Please wait for confirmation.")
+	}
+
+	if registeredOwner != peerID {
+		return C.CString("Error: Security Mismatch (Code owner does not match registry)")
+	}
+
+	friendMutex.Lock()
+	MyFriends[peerID] = FriendInfo{
+		Name:       "Unknown Peer",
+		PeerID:     peerID,
+		FriendCode: cStr,
+		IsOnline:   false,
+	}
+	friendMutex.Unlock()
+
+	return C.CString("Success: " + peerID)
+}
+
+//export FetchFriendList
+func FetchFriendList() *C.char {
+	friendMutex.Lock()
+	defer friendMutex.Unlock()
+
+	var list []FriendInfo
+
+	for id, info := range MyFriends {
+		if len(h.Peerstore().Addrs(peer.ID(id))) > 0 {
+			info.IsOnline = true
+		} else {
+			info.IsOnline = false
+		}
+		list = append(list, info)
+	}
+
+	data, _ := json.Marshal(list)
+	return C.CString(string(data))
 }
 
 //export GetNetworkMatches

@@ -153,7 +153,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- Data Models ---
 class Friend {
   final String name;
   final String peerID;
@@ -186,8 +185,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final Lgpkg _lgpkg = Lgpkg();
   final GameRunner _runner = GameRunner();
   final GsiConfigurator _configurator = GsiConfigurator();
-
-  // Controllers
   final TextEditingController _joinController = TextEditingController();
   final TextEditingController _cs2PathController = TextEditingController();
   final TextEditingController _dbUserController = TextEditingController();
@@ -197,45 +194,33 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
 
-  // State
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   Timer? _steamIdTimer;
   Timer? _pollMatchesTimer;
   String _myPeerID = "";
   String _mySteamID = "";
-  
+  String _myFriendCode = "";
   String _status = "WAITING FOR ACTION"; 
   String _level = "10";
   String _score = "CT 0 - 0 T";
-  
   bool _isSearching = false;
   bool _isEngineRunning = false;
   bool _isCompanionVisible = false;
   int _currentView = 0;
   bool _hasMinedThisMatch = false;
   int _selectedShopTab = 0;
-
-  // Game Config State
   String _selectedModeTitle = "MATCHMAKING"; 
   String _selectedGameType = "0";
   String _selectedGameMode = "1";
   String _maxPlayers = "10";
   String _isFriendlyFire = '0';
   bool _recordDemo = true;
-  
   String _selectedMap = "de_dust2";
   File? _avatarImage;
-
-  // Friends Data
-  final List<Friend> _friends = [];
-
-  // Auction Data
+  List<dynamic> _friends = [];
   List<dynamic> _realAuctions = [];
-
-  // live Match Data
   List<dynamic> _liveMatches = [];
-
   final List<String> _maps = [
     "de_dust2", "de_mirage", "de_inferno", "de_nuke", 
     "de_overpass", "de_vertigo", "de_ancient", "de_anubis"
@@ -270,7 +255,26 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
     _setGameMode("MATCHMAKING");
 
-    _friends.add(Friend(name: "TestPlayer", peerID: "QmHashTest123", level: "8", skillScore: 2100, edn: 50.0));
+    Timer.run(() async {
+        await Future.delayed(Duration(seconds: 2));
+        String code = await widget.p2pService.generateMyFriendCode();
+        if(mounted) {
+            setState(() { 
+              _myFriendCode = code; 
+          });
+        }
+      });
+
+    Timer.periodic(Duration(seconds: 5), (_) async {
+        if(_currentView == 1) {
+            var updatedList = await widget.p2pService.getFriendList();
+            if(mounted) {
+                setState(() { 
+                _friends = updatedList; 
+              });
+            }
+        }
+      });
   }
 
   @override
@@ -371,15 +375,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
-          onPressed: () {
+          onPressed: () async {
             if (_friendCodeController.text.isNotEmpty) {
-              setState(() {
-                _friends.add(Friend(
-                  name: "New Friend", 
-                  peerID: _friendCodeController.text,
-                  level: "1"
-                ));
-              });
+              String res = await widget.p2pService.addFriendByCode(_friendCodeController.text);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
               _friendCodeController.clear();
               Navigator.pop(ctx);
             }
@@ -1005,7 +1004,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
-  Widget _buildFriendList() {
+Widget _buildFriendList() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1028,7 +1027,21 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           : ListView.builder(
               itemCount: _friends.length,
               itemBuilder: (ctx, i) {
-                final friend = _friends[i];
+                final friendData = _friends[i];
+                
+                // Construct a Friend object on the fly for compatibility with existing methods
+                // Note: The backend 'FriendInfo' currently provides name/peerID/online status.
+                // We default Level/Skill/EDN until those are added to the protocol.
+                final friend = Friend(
+                  name: friendData['name'] ?? "Unknown Peer", 
+                  peerID: friendData['peer_id'] ?? "",
+                  level: "1", // Placeholder
+                  skillScore: 1000, // Placeholder
+                  edn: 0.0 // Placeholder
+                );
+                
+                bool isOnline = friendData['is_online'] ?? false;
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
@@ -1039,8 +1052,25 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                   ),
                   child: Row(
                     children: [
-                      CircleAvatar(radius: 24, backgroundColor: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white)),
+                      Stack(
+                        children: [
+                          CircleAvatar(radius: 24, backgroundColor: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white)),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              width: 12, height: 12,
+                              decoration: BoxDecoration(
+                                color: isOnline ? Colors.greenAccent : Colors.grey,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: kFaceitSurface, width: 2)
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
                       const SizedBox(width: 16),
+                      
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1048,28 +1078,30 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
-                                child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              ),
-                              const SizedBox(width: 8),
-                              Text("${_lgpkg.get("Skill")}: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                              const SizedBox(width: 8),
-                              Text("${friend.edn} EDN", style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                              if (isOnline) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
+                                  child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(width: 8),
+                                Text("${_lgpkg.get("Skill")}: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              ] else 
+                                const Text("Offline", style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)),
                             ],
                           )
                         ],
                       ),
                       const Spacer(),
+                      
                       OutlinedButton(
-                        onPressed: () => _inviteFriend(friend),
+                        onPressed: isOnline ? () => _inviteFriend(friend) : null, // Disable invite if offline
                         child: Text(_lgpkg.get("Invite")),
                       ),
                       const SizedBox(width: 12),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
-                        onPressed: () => _openTradeInterface(friend),
+                        style: ElevatedButton.styleFrom(backgroundColor: isOnline ? Colors.green[700] : Colors.grey[800]),
+                        onPressed: isOnline ? () => _openTradeInterface(friend) : null,
                         child: Text(_lgpkg.get("Trade")),
                       ),
                     ],

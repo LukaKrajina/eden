@@ -20,14 +20,15 @@ import (
 )
 
 const (
-	TxTypeTransfer     = "TRANSFER"
-	TxTypeBet          = "BET"
-	TxTypeEscrow       = "ESCROW_LOCK"
-	TxTypeResolve      = "RESOLVE_PAYOUT"
-	TxTypeList         = "LIST_ITEM"
-	TxTypeCloseExpired = "CLOSE_EXPIRED"
-	TxTypeMatchStart   = "MATCH_START"
-	TxTypeWitness      = "MATCH_WITNESS"
+	TxTypeRegisterFriend = "REGISTER_FRIEND"
+	TxTypeTransfer       = "TRANSFER"
+	TxTypeBet            = "BET"
+	TxTypeEscrow         = "ESCROW_LOCK"
+	TxTypeResolve        = "RESOLVE_PAYOUT"
+	TxTypeList           = "LIST_ITEM"
+	TxTypeCloseExpired   = "CLOSE_EXPIRED"
+	TxTypeMatchStart     = "MATCH_START"
+	TxTypeWitness        = "MATCH_WITNESS"
 )
 
 type Transaction struct {
@@ -109,6 +110,7 @@ type Blockchain struct {
 	MatchVotes     map[string]map[string]string `json:"match_votes"`
 	Database       *leveldb.DB
 	DBPath         string
+	FriendRegistry map[string]string `json:"friend_registry"`
 	Mutex          sync.RWMutex
 }
 
@@ -273,6 +275,12 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 		}
 
 		switch tx.Type {
+
+		case TxTypeRegisterFriend:
+			code := tx.Payload
+			bc.FriendRegistry[code] = tx.Sender
+			fmt.Printf("[Chain] Registered Friend Code: %s for Peer %s\n", code, tx.Sender)
+
 		case TxTypeTransfer:
 			bc.Balances[tx.Receiver] += tx.Amount
 

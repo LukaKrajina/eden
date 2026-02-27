@@ -60,6 +60,15 @@ typedef SetSteamAPIKeyDart = void Function(Pointer<Utf8> key);
 typedef GetSteamInventoryC = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 typedef GetSteamInventoryDart = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 
+typedef RegisterFriendC = Pointer<Utf8> Function();
+typedef RegisterFriendDart = Pointer<Utf8> Function();
+
+typedef AddFriendC = Pointer<Utf8> Function(Pointer<Utf8> code);
+typedef AddFriendDart = Pointer<Utf8> Function(Pointer<Utf8> code);
+
+typedef GetFriendsC = Pointer<Utf8> Function();
+typedef GetFriendsDart = Pointer<Utf8> Function();
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -91,6 +100,9 @@ class P2PService {
   late ConfirmTradeDart _confirmTrade;
   late SetSteamAPIKeyDart _setSteamAPIKey;
   late GetSteamInventoryDart _getSteamInventory;
+  late RegisterFriendDart _registerFriend;
+  late AddFriendDart _addFriend;
+  late GetFriendsDart _getFriends;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -125,6 +137,9 @@ class P2PService {
     _confirmTrade = _lib.lookupFunction<ConfirmTradeC, ConfirmTradeDart>('ConfirmTrade');
     _setSteamAPIKey = _lib.lookupFunction<SetSteamAPIKeyC, SetSteamAPIKeyDart>('UpdateSteamAPIKey');
     _getSteamInventory = _lib.lookupFunction<GetSteamInventoryC, GetSteamInventoryDart>('GetSteamInventory');
+    _registerFriend = _lib.lookupFunction<RegisterFriendC, RegisterFriendDart>('RegisterAndGetFriendCode');
+    _addFriend = _lib.lookupFunction<AddFriendC, AddFriendDart>('AddFriend');
+    _getFriends = _lib.lookupFunction<GetFriendsC, GetFriendsDart>('GetFriends');
   }
 
   void start() {
@@ -305,6 +320,31 @@ class P2PService {
       return jsonDecode(jsonStr);
     } catch (e) {
       print("Error parsing matches: $e");
+      return [];
+    }
+  }
+
+  Future<String> generateMyFriendCode() async {
+    if (!_isInitialized) return "Offline";
+    return _registerFriend().toDartString();
+  }
+
+  Future<String> addFriendByCode(String code) async {
+    if (!_isInitialized) return "Offline";
+    final ptr = code.toNativeUtf8();
+    try {
+      return _addFriend(ptr).toDartString();
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<List<dynamic>> getFriendList() async {
+    if (!_isInitialized) return [];
+    final ptr = _getFriends();
+    try {
+      return jsonDecode(ptr.toDartString());
+    } catch (e) {
       return [];
     }
   }
