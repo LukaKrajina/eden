@@ -43,6 +43,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	lp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -325,8 +326,18 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 
 	InitializeWallet()
 
-	var err error
+	privBytes, err := hex.DecodeString(myPrivKey)
+	if err != nil {
+		return C.CString("Error: Invalid Private Key Hex")
+	}
+
+	libp2pKey, err := lp2pcrypto.UnmarshalECDSAPrivateKey(privBytes)
+	if err != nil {
+		return C.CString("Error: Failed to convert to Libp2p Key: " + err.Error())
+	}
+
 	h, err = libp2p.New(
+		libp2p.Identity(libp2pKey),
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
@@ -669,16 +680,14 @@ func InitializeWallet() {
 }
 
 //export GetWalletPubKey
-func GetWalletPubKey() string {
-	return myPubKey
+func GetWalletPubKey() *C.char {
+	return C.CString(myPubKey)
 }
 
 //export GetWalletBalance
 func GetWalletBalance(address *C.char) C.double {
 	return C.double(EdenChain.GetBalance(C.GoString(address)))
 }
-
-// --- CGO Exports: Betting & Auctions ---
 
 //export ListSteamItem
 func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.char {
@@ -941,7 +950,6 @@ func FetchMyInventory(steamID *C.char) *C.char {
 	body, _ := io.ReadAll(resp.Body)
 	var data SteamInventoryResponse
 	json.Unmarshal(body, &data)
-	//descMap := make(map[string]SteamInventoryResponse)
 	type Key struct {
 		ClassID, InstanceID string
 	}
