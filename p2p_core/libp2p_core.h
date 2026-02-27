@@ -112,7 +112,7 @@ extern char* StartEdenNode(char* virtualIP);
 extern char* StartMatch(char* matchID, char* playerList);
 extern void StopEdenNode(void);
 extern char* SubmitGameBlock(int duration, int playerCount);
-extern GoString GetWalletPubKey(void);
+extern char* GetWalletPubKey(void);
 extern double GetWalletBalance(char* address);
 extern char* ListSteamItem(char* assetID, double price, int durationSeconds);
 extern char* GetOpenAuctions(void);
