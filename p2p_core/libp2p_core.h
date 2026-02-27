@@ -107,6 +107,9 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
+extern char* GenerateAndRegisterFriendCode(void);
+extern char* AddFriendByCode(char* code);
+extern char* FetchFriendList(void);
 extern char* GetNetworkMatches(void);
 extern char* StartEdenNode(char* virtualIP);
 extern char* StartMatch(char* matchID, char* playerList);
