@@ -242,12 +242,7 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 }
 
 func (bc *Blockchain) GeneratePayouts(matchID string, winningTeam string) []Transaction {
-	pool, exists := bc.ActivePools[matchID]
-	if !exists || !pool.IsOpen {
-		return nil
-	}
-
-	return nil
+	return bc.ResolveMatch(matchID, winningTeam)
 }
 
 func (bc *Blockchain) ProcessBlockState(b Block) bool {
@@ -460,15 +455,20 @@ func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transac
 	pool.IsOpen = false
 	payoutTxs := []Transaction{}
 
-	const CommissionRate = 0.04
-	netPool := pool.TotalPool * (1.0 - CommissionRate)
-
-	var winningPoolTotal float64
+	var winningPoolTotal, losingPoolTotal float64
 	if winningTeam == "CT" {
 		winningPoolTotal = pool.TeamAPool
+		losingPoolTotal = pool.TeamBPool
 	} else {
 		winningPoolTotal = pool.TeamBPool
+		losingPoolTotal = pool.TeamAPool
 	}
+
+	fmt.Printf("[Betting] Resolving Match %s. Winner: %s. Pool Split - Win: %.2f | Loss: %.2f\n", matchID, winningTeam, winningPoolTotal, losingPoolTotal)
+
+	const CommissionRate = 0.04
+	totalPot := pool.TotalPool
+	netPot := totalPot * (1.0 - CommissionRate)
 
 	if winningPoolTotal == 0 {
 		burnTx := Transaction{
@@ -488,7 +488,7 @@ func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transac
 	for _, bet := range pool.Bets {
 		if bet.Team == winningTeam {
 			share := bet.Amount / winningPoolTotal
-			payoutAmount := share * netPool
+			payoutAmount := share * netPot
 
 			tx := Transaction{
 				ID:        fmt.Sprintf("pay_%s_%d", matchID, time.Now().UnixNano()),

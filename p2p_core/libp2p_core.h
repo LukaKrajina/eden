@@ -109,14 +109,16 @@ extern "C" {
 
 extern char* GetNetworkMatches(void);
 extern char* StartEdenNode(char* virtualIP);
+extern char* StartMatch(char* matchID, char* playerList);
 extern void StopEdenNode(void);
 extern char* SubmitGameBlock(int duration, int playerCount);
+extern GoString GetWalletPubKey(void);
 extern double GetWalletBalance(char* address);
 extern char* ListSteamItem(char* assetID, double price, int durationSeconds);
 extern char* GetOpenAuctions(void);
 extern char* TriggerExpirationCleanup(void);
 extern char* PlaceBet(char* matchID, char* team, double amount);
-extern int SendTransaction(char* sender, char* receiver, double amount);
+extern int SendTransaction(char* receiver, double amount);
 extern char* CreateEscrow(char* sellerID, char* assetID, double price);
 extern int VerifySteamTrade(char* tradeOfferID, char* expectedAssetID);
 extern void SetSteamAPIKey(char* key);
@@ -126,6 +128,7 @@ extern void HandleOutboundPacket(void* data, int len);
 extern char* GetMyPeerID(void);
 extern char* AutoConnectToPeers(void);
 extern char* GetIPForPeer(char* peerIDStr);
+extern void FreeString(char* str);
 
 #ifdef __cplusplus
 }

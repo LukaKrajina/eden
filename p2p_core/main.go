@@ -323,8 +323,6 @@ func readFrame(s network.Stream) ([]byte, error) {
 func StartEdenNode(virtualIP *C.char) *C.char {
 	ctx = context.Background()
 
-	InitializeChain("./eden_db_" + h.ID().String())
-
 	InitializeWallet()
 
 	var err error
@@ -333,6 +331,8 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
 	)
+
+	InitializeChain("./eden_db_" + h.ID().String())
 
 	h.SetStreamHandler(SyncProtocolID, HandleSyncRequest)
 

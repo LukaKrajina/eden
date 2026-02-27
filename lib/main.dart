@@ -2047,7 +2047,12 @@ class _WalletWindowState extends State<WalletWindow> {
     );
   }
 
-  void _showReceiveDialog() {
+  void _showReceiveDialog() async {
+    
+    String walletAddress = await widget.p2pService.getPublicKey();
+    
+    if (!mounted) return;
+
     showDialog(
       context: context, 
       builder: (ctx) => AlertDialog(
@@ -2059,16 +2064,18 @@ class _WalletWindowState extends State<WalletWindow> {
             Text(_lgpkg.get("ShareIDMsg"), style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 15),
             Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(4)),
-              child: SelectableText(widget.myPeerID, style: const TextStyle(color: Colors.white, fontFamily: "monospace")),
-            ),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(4)),
+                child: SelectableText(walletAddress.isEmpty ? "Wallet Not Initialized" : walletAddress, 
+                  style: const TextStyle(color: Colors.white, fontFamily: "monospace", fontSize: 12),
+              ),
+            )
           ],
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: widget.myPeerID));
+              Clipboard.setData(ClipboardData(text: walletAddress));
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_lgpkg.get("CopiedClipboard"))));
               Navigator.pop(ctx);
             }, 

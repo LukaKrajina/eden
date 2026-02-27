@@ -3,7 +3,6 @@ import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 
-// --- Typedefs ---
 typedef StartEngineC = Void Function();
 typedef StartEngineDart = void Function();
 
@@ -18,6 +17,9 @@ typedef GetLocalPeerIDDart = Pointer<Utf8> Function();
 
 typedef GetIPForPeerC = Pointer<Utf8> Function(Pointer<Utf8> peerID);
 typedef GetIPForPeerDart = Pointer<Utf8> Function(Pointer<Utf8> peerID);
+
+typedef GetMyPublicKeyC = Pointer<Utf8> Function();
+typedef GetMyPublicKeyDart = Pointer<Utf8> Function();
 
 typedef GetDashboardDataC = Void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
 typedef GetDashboardDataDart = void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
@@ -70,13 +72,12 @@ class P2PService {
 
   late DynamicLibrary _lib;
   bool _isInitialized = false;
-
-  // Function Pointers
   late StartEngineDart _startEngine;
   late StopEngineDart _stopEngine;
   late ConnectToPeerDart _connectToPeer;
   late GetLocalPeerIDDart _getLocalPeerID;
   late GetIPForPeerDart _getIPForPeer;
+  late GetMyPublicKeyDart _getMyPublicKey;
   late GetDashboardDataDart _getDashboardData;
   late FindMatchDart _findMatch;
   late MineBlockDart _mineBlock;
@@ -110,6 +111,7 @@ class P2PService {
     _connectToPeer = _lib.lookupFunction<ConnectToPeerC, ConnectToPeerDart>('JoinBattle');
     _getLocalPeerID = _lib.lookupFunction<GetLocalPeerIDC, GetLocalPeerIDDart>('GetLocalPeerID');
     _getIPForPeer = _lib.lookupFunction<GetIPForPeerC, GetIPForPeerDart>('GetIPForPeer');
+    _getMyPublicKey = _lib.lookupFunction<GetMyPublicKeyC, GetMyPublicKeyDart>('GetMyPublicKey');
     _getDashboardData = _lib.lookupFunction<GetDashboardDataC, GetDashboardDataDart>('GetDashboardData');
     _findMatch = _lib.lookupFunction<FindMatchC, FindMatchDart>('FindMatch');
     _mineBlock = _lib.lookupFunction<MineBlockC, MineBlockDart>('MineBlock');
@@ -151,6 +153,15 @@ class P2PService {
     final result = _getIPForPeer(ptr).toDartString();
     calloc.free(ptr);
     return result;
+  }
+
+  Future<String> getPublicKey() async {
+    if (!_isInitialized) return "";
+    try {
+      return _getMyPublicKey().toDartString();
+    } catch (e) {
+      return "Error: Key Not Available";
+    }
   }
 
   bool isConnected() {
