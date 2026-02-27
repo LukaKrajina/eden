@@ -28,12 +28,14 @@ import "C"
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -43,22 +45,20 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
 
-// --- Steam Configuration ---
 var SteamAPIKey = os.Getenv("STEAM_API_KEY")
 
 const GSI_PORT = "127.0.0.1:3000"
 const MaxPayloadSize = 2048
-
-// --- Constants & Globals ---
-
 const (
 	FrameGame      = 0x01
 	FrameHeartbeat = 0x02
 	ProtocolID     = "/eden-cs2/1.0.0"
+	SyncProtocolID = "/eden/sync/1.0.0"
 	TopicName      = "eden-consensus-v1"
 )
 
@@ -93,6 +93,11 @@ type NetworkStats struct {
 	IsInitialized   bool
 }
 
+type ChainStatus struct {
+	Height int    `json:"height"`
+	Hash   string `json:"hash"`
+}
+
 type GSIState struct {
 	Provider struct {
 		SteamID   string `json:"steamid"`
@@ -108,6 +113,20 @@ type GSIState struct {
 			Score int `json:"score"`
 		} `json:"team_t"`
 	} `json:"map"`
+}
+
+type SyncRequest struct {
+	Type  string `json:"type"`
+	Index int    `json:"index"`
+	Hash  string `json:"hash"`
+	Limit int    `json:"limit"`
+}
+
+type SyncResponse struct {
+	Height int     `json:"height"`
+	Hash   string  `json:"hash"`
+	Match  bool    `json:"match"`
+	Blocks []Block `json:"blocks"`
 }
 
 type SteamTradeOfferResponse struct {
@@ -172,8 +191,6 @@ var myPeerID string
 var myPrivKey string
 var myPubKey string
 
-// --- Game State Integration (GSI) Server ---
-
 func StartGSIServer() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -207,26 +224,41 @@ func StartGSIServer() {
 		}
 
 		if state.Map.Phase == "gameover" && currentMatchID != "" {
-			winningTeam := "CT"
+			myVerdict := "CT"
 			if state.Map.TeamT.Score > state.Map.TeamCT.Score {
-				winningTeam = "T"
+				myVerdict = "T"
 			}
 
-			payoutTxs := EdenChain.ResolveMatch(currentMatchID, winningTeam)
-			if len(payoutTxs) > 0 {
-				newBlock := Block{
-					Index:        len(EdenChain.Chain),
-					Timestamp:    time.Now().Unix(),
-					Transactions: payoutTxs,
-					PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
-				}
-				newBlock.Hash = calculateHash(newBlock)
+			fmt.Printf("[GSI] Match Ended. I witnessed %s win. Broadcasting vote...\n", myVerdict)
 
-				if EdenChain.AddBlock(newBlock) {
-					broadcastBlock(newBlock)
-					fmt.Printf("[Oracle] Match %s resolved. Winner: %s. Broadcast Block #%d\n", currentMatchID, winningTeam, newBlock.Index)
-				}
+			tx := Transaction{
+				ID:        fmt.Sprintf("vote_%s_%s", currentMatchID, h.ID().String()),
+				Type:      TxTypeWitness,
+				Sender:    h.ID().String(),
+				Receiver:  "CONSENSUS_ENGINE",
+				Amount:    0,
+				Payload:   fmt.Sprintf("%s:%s", currentMatchID, myVerdict),
+				Timestamp: time.Now().Unix(),
 			}
+
+			SignTransaction(myPrivKey, &tx)
+			EdenChain.Mutex.RLock()
+			lastIndex := EdenChain.LastBlock.Index
+			prevHash := EdenChain.LastBlock.Hash
+			EdenChain.Mutex.RUnlock()
+			newBlock := Block{
+				Index:        lastIndex + 1,
+				Timestamp:    time.Now().Unix(),
+				Transactions: []Transaction{tx},
+				PrevHash:     prevHash,
+			}
+			newBlock.Hash = calculateHash(newBlock)
+
+			if EdenChain.AddBlock(newBlock) {
+				broadcastBlock(newBlock)
+				fmt.Println("[GSI] Vote cast successfully.")
+			}
+
 			currentMatchID = ""
 		}
 	})
@@ -255,13 +287,43 @@ func GetNetworkMatches() *C.char {
 	return C.CString(string(data))
 }
 
-// --- CGO Exports: Node Management ---
+func writeFrame(s network.Stream, data []byte) error {
+	length := uint32(len(data))
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, length)
+
+	if _, err := s.Write(lenBuf); err != nil {
+		return err
+	}
+	if _, err := s.Write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func readFrame(s network.Stream) ([]byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(s, lenBuf); err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+
+	if length > 10*1024*1024 {
+		return nil, fmt.Errorf("message too large: %d bytes", length)
+	}
+
+	buf := make([]byte, length)
+	if _, err := io.ReadFull(s, buf); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
 
 //export StartEdenNode
 func StartEdenNode(virtualIP *C.char) *C.char {
 	ctx = context.Background()
 
-	InitializeChain()
+	InitializeChain("./eden_db_" + h.ID().String())
 
 	InitializeWallet()
 
@@ -271,6 +333,9 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
 	)
+
+	h.SetStreamHandler(SyncProtocolID, HandleSyncRequest)
+
 	if err != nil {
 		return C.CString("Error: " + err.Error())
 	}
@@ -296,35 +361,269 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	myPeerID = h.ID().String()
 	fmt.Printf("[Eden] Node Started. ID: %s\n", h.ID().String())
 
-	// --- ADD THIS SECTION: DEV AIRDROP ---
-	// Automatically mint 1000 EDN to self for testing
-	airdropTx := Transaction{
-		ID:        fmt.Sprintf("genesis_drop_%d", time.Now().UnixNano()),
-		Type:      TxTypeTransfer,
-		Sender:    "SYSTEM_MINT", // Bypasses balance check
-		Receiver:  myPeerID,
-		Amount:    1000.0,
-		Timestamp: time.Now().Unix(),
-		Signature: "DEV_AIRDROP",
-	}
-
-	// Create a block for this airdrop
-	airdropBlock := Block{
-		Index:        len(EdenChain.Chain),
-		Timestamp:    time.Now().Unix(),
-		Transactions: []Transaction{airdropTx},
-		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
-	}
-	// Note: You need to make calculateHash exported (Capitalize to CalculateHash)
-	// OR just copy the hashing logic here if it's private in blockchain.go.
-	// Assuming you capitalized it or it's accessible:
-	airdropBlock.Hash = calculateHash(airdropBlock)
-
-	if EdenChain.AddBlock(airdropBlock) {
-		fmt.Println("[Eden] Dev Airdrop: +1000 EDN minted to local wallet.")
-	}
-
 	return C.CString(getIPFromPeerID(h.ID().String()))
+}
+
+func HandleSyncRequest(s network.Stream) {
+	defer s.Close()
+
+	buf, err := readFrame(s)
+	if err != nil {
+		return
+	}
+
+	var req SyncRequest
+	json.Unmarshal(buf, &req)
+
+	EdenChain.Mutex.RLock()
+	localHeight := EdenChain.LastBlock.Index + 1
+
+	resp := SyncResponse{
+		Height: localHeight,
+	}
+
+	switch req.Type {
+	case "STATUS":
+		if localHeight > 0 {
+			resp.Hash = EdenChain.LastBlock.Hash
+		}
+
+	case "VERIFY":
+		blocks := EdenChain.GetBlocksRange(req.Index, req.Index+1)
+		if len(blocks) > 0 {
+			localHash := blocks[0].Hash
+			resp.Hash = localHash
+			resp.Match = (localHash == req.Hash)
+		} else {
+			resp.Match = false
+		}
+
+	case "BLOCKS":
+		if req.Index < localHeight {
+			end := req.Index + req.Limit
+			if end > localHeight {
+				end = localHeight
+			}
+			resp.Blocks = EdenChain.GetBlocksRange(req.Index, end)
+		}
+	}
+	EdenChain.Mutex.RUnlock()
+
+	data, _ := json.Marshal(resp)
+	writeFrame(s, data)
+}
+
+func (bc *Blockchain) GetBlocksRange(start, end int) []Block {
+	var blocks []Block
+	for i := start; i < end; i++ {
+		key := fmt.Sprintf("block_%d", i)
+		data, err := bc.Database.Get([]byte(key), nil)
+		if err == nil {
+			var b Block
+			json.Unmarshal(data, &b)
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
+func TriggerSync(pID peer.ID) {
+	status, err := requestSync(pID, SyncRequest{Type: "STATUS"})
+	if err != nil {
+		return
+	}
+
+	EdenChain.Mutex.RLock()
+	localHeight := EdenChain.LastBlock.Index + 1
+	EdenChain.Mutex.RUnlock()
+
+	fmt.Printf("[Sync] Peer Height: %d | Local Height: %d\n", status.Height, localHeight)
+
+	if status.Height == 0 {
+		return
+	}
+
+	low := 0
+	high := localHeight - 1
+	if status.Height-1 < high {
+		high = status.Height - 1
+	}
+
+	ancestor := -1
+
+	if high >= 0 {
+		tipBlocks := EdenChain.GetBlocksRange(high, high+1)
+		if len(tipBlocks) > 0 {
+			tipCheck, _ := requestSync(pID, SyncRequest{
+				Type:  "VERIFY",
+				Index: high,
+				Hash:  tipBlocks[0].Hash,
+			})
+			if tipCheck.Match {
+				ancestor = high
+			}
+		}
+
+	}
+
+	if ancestor == -1 && localHeight > 0 {
+		fmt.Println("[Sync] Fork detected! Searching for common ancestor...")
+		for low <= high {
+			mid := low + (high-low)/2
+
+			midBlocks := EdenChain.GetBlocksRange(mid, mid+1)
+			if len(midBlocks) == 0 {
+				break
+			}
+
+			verifyResp, err := requestSync(pID, SyncRequest{
+				Type:  "VERIFY",
+				Index: mid,
+				Hash:  midBlocks[0].Hash,
+			})
+			if err != nil {
+				break
+			}
+
+			if verifyResp.Match {
+				ancestor = mid
+				low = mid + 1
+			} else {
+				high = mid - 1
+			}
+		}
+	}
+
+	if ancestor < localHeight-1 {
+		fmt.Printf("[Sync] Reorganizing Chain. Rolling back from %d to %d\n", localHeight-1, ancestor)
+		EdenChain.Mutex.Lock()
+
+		for i := localHeight - 1; i > ancestor; i-- {
+			key := fmt.Sprintf("block_%d", i)
+			EdenChain.Database.Delete([]byte(key), nil)
+		}
+
+		EdenChain.Database.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)), nil)
+
+		EdenChain.Balances = make(map[string]float64)
+		EdenChain.ActiveAuctions = make(map[string]*Auction)
+		EdenChain.ActivePools = make(map[string]*BettingPool)
+
+		validBlocks := EdenChain.GetBlocksRange(0, ancestor+1)
+		for _, b := range validBlocks {
+			EdenChain.ProcessBlockState(b)
+		}
+
+		if len(validBlocks) > 0 {
+			EdenChain.LastBlock = validBlocks[len(validBlocks)-1]
+		} else {
+			EdenChain.LastBlock = Block{Index: -1}
+		}
+
+		EdenChain.Mutex.Unlock()
+	}
+
+	startDownload := ancestor + 1
+	for startDownload < status.Height {
+
+		req := SyncRequest{
+			Type:  "BLOCKS",
+			Index: startDownload,
+			Limit: 100,
+		}
+
+		resp, err := requestSync(pID, req)
+		if err != nil {
+			break
+		}
+
+		if len(resp.Blocks) == 0 {
+			break
+		}
+
+		for _, b := range resp.Blocks {
+			if !EdenChain.AddBlock(b) {
+				fmt.Println("[Sync] Failed to append downloaded block. Chain invalid.")
+				return
+			}
+		}
+		startDownload += len(resp.Blocks)
+	}
+
+	fmt.Println("[Sync] Synchronization Complete.")
+}
+
+func requestSync(pID peer.ID, req SyncRequest) (SyncResponse, error) {
+	s, err := h.NewStream(ctx, pID, SyncProtocolID)
+	if err != nil {
+		return SyncResponse{}, err
+	}
+	defer s.Close()
+
+	reqData, _ := json.Marshal(req)
+	if err := writeFrame(s, reqData); err != nil {
+		return SyncResponse{}, err
+	}
+
+	buf, err := readFrame(s)
+	if err != nil {
+		return SyncResponse{}, err
+	}
+
+	var resp SyncResponse
+	err = json.Unmarshal(buf, &resp)
+	return resp, err
+}
+
+//export StartMatch
+func StartMatch(matchID *C.char, playerList *C.char) *C.char {
+	mID := C.GoString(matchID)
+	roster := C.GoString(playerList)
+
+	currentMatchID = mID
+
+	fmt.Printf("[Lobby] Initializing Match %s with Roster: %s\n", mID, roster)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("init_%s_%d", mID, time.Now().UnixNano()),
+		Type:      "MATCH_START",
+		Sender:    h.ID().String(),
+		Receiver:  "CONSENSUS_ENGINE",
+		Amount:    0,
+		Payload:   fmt.Sprintf("%s|%s", mID, roster),
+		Timestamp: time.Now().Unix(),
+	}
+
+	if !strings.Contains(roster, h.ID().String()) {
+		fmt.Println("[Security] Host attempted to start match without being in roster.")
+		return C.CString("Error: Invalid Roster")
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		fmt.Printf("[Error] Failed to sign match start tx: %v\n", err)
+		return C.CString("Error: Signing Failed")
+	}
+
+	EdenChain.Mutex.RLock()
+	lastIndex := EdenChain.LastBlock.Index
+	prevHash := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	newBlock := Block{
+		Index:        lastIndex + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     prevHash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		fmt.Printf("[Lobby] Match %s successfully initialized on-chain.\n", mID)
+		return C.CString("Success")
+	}
+
+	return C.CString("Error: Block Rejected")
 }
 
 //export StopEdenNode
@@ -338,8 +637,6 @@ func StopEdenNode() {
 		h.Close()
 	}
 }
-
-// --- CGO Exports: Mining & Wallet ---
 
 //export SubmitGameBlock
 func SubmitGameBlock(duration C.int, playerCount C.int) *C.char {
@@ -400,10 +697,10 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 	}
 
 	newBlock := Block{
-		Index:        len(EdenChain.Chain),
+		Index:        EdenChain.LastBlock.Index + 1,
 		Timestamp:    time.Now().Unix(),
 		Transactions: []Transaction{tx},
-		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+		PrevHash:     EdenChain.LastBlock.Hash,
 	}
 	newBlock.Hash = calculateHash(newBlock)
 
@@ -464,10 +761,10 @@ func TriggerExpirationCleanup() *C.char {
 		}
 
 		newBlock := Block{
-			Index:        len(EdenChain.Chain),
+			Index:        EdenChain.LastBlock.Index + 1,
 			Timestamp:    time.Now().Unix(),
 			Transactions: []Transaction{tx},
-			PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+			PrevHash:     EdenChain.LastBlock.Hash,
 		}
 		newBlock.Hash = calculateHash(newBlock)
 
@@ -490,18 +787,17 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 		ID:        fmt.Sprintf("bet_%d", time.Now().UnixNano()),
 		Type:      TxTypeBet,
 		Sender:    h.ID().String(),
-		Receiver:  "POOL_CONTRACT", // Logic handled in AddBlock
+		Receiver:  "POOL_CONTRACT",
 		Amount:    amt,
 		Payload:   fmt.Sprintf("%s:%s", mID, tm),
 		Timestamp: time.Now().Unix(),
 	}
 
-	// Wrap in a block (Simplified: normally goes to mempool)
 	newBlock := Block{
-		Index:        len(EdenChain.Chain),
+		Index:        EdenChain.LastBlock.Index + 1,
 		Timestamp:    time.Now().Unix(),
 		Transactions: []Transaction{tx},
-		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+		PrevHash:     EdenChain.LastBlock.Hash,
 	}
 	newBlock.Hash = calculateHash(newBlock)
 
@@ -541,10 +837,10 @@ func SendTransaction(receiver *C.char, amount C.double) C.int {
 	}
 
 	newBlock := Block{
-		Index:        len(EdenChain.Chain),
+		Index:        EdenChain.LastBlock.Index + 1,
 		Timestamp:    time.Now().Unix(),
 		Transactions: []Transaction{tx},
-		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+		PrevHash:     EdenChain.LastBlock.Hash,
 	}
 	newBlock.Hash = calculateHash(newBlock)
 
@@ -569,10 +865,10 @@ func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 	}
 
 	newBlock := Block{
-		Index:        len(EdenChain.Chain),
+		Index:        EdenChain.LastBlock.Index + 1,
 		Timestamp:    time.Now().Unix(),
 		Transactions: []Transaction{tx},
-		PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+		PrevHash:     EdenChain.LastBlock.Hash,
 	}
 	newBlock.Hash = calculateHash(newBlock)
 
@@ -582,8 +878,6 @@ func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 	}
 	return C.CString("Error: Escrow Broadcast Failed")
 }
-
-// --- Steam Oracle Logic ---
 
 //export VerifySteamTrade
 func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
@@ -608,10 +902,10 @@ func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
 					settleTx := EdenChain.SettleEscrow(tid)
 					if settleTx != nil {
 						newBlock := Block{
-							Index:        len(EdenChain.Chain),
+							Index:        EdenChain.LastBlock.Index + 1,
 							Timestamp:    time.Now().Unix(),
 							Transactions: []Transaction{*settleTx},
-							PrevHash:     EdenChain.Chain[len(EdenChain.Chain)-1].Hash,
+							PrevHash:     EdenChain.LastBlock.Hash,
 						}
 						newBlock.Hash = calculateHash(newBlock)
 
@@ -692,8 +986,6 @@ func FetchMyInventory(steamID *C.char) *C.char {
 	return C.CString(string(jsonData))
 }
 
-// --- CGO Exports: Networking ---
-
 //export InitPacketBridge
 func InitPacketBridge(fn C.InjectVPNPacketFn) {
 	C.SetInjectPacketPointer(fn)
@@ -718,7 +1010,6 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 	}
 	frame := bufPtr[:totalLen]
 
-	// Header Construction
 	netStats.Lock()
 	netStats.LocalSeq++
 	seq := netStats.LocalSeq
@@ -740,8 +1031,6 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 
 	bufferPool.Put(bufPtr)
 }
-
-// --- Internal Networking Logic ---
 
 func readStreamLoop(s network.Stream) {
 	defer s.Close()
@@ -820,8 +1109,6 @@ func GetNetworkQuality() int {
 	}
 	return score
 }
-
-// --- PubSub & Sync ---
 
 func setupPubSub() {
 	var err error
@@ -915,6 +1202,7 @@ func AutoConnectToPeers() *C.char {
 				go readStreamLoop(s)
 				return C.CString(p.ID.String())
 			}
+			go TriggerSync(p.ID)
 		}
 	}
 	return C.CString("No peers found")

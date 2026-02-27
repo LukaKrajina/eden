@@ -18,7 +18,6 @@
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "shell32.lib")
 
-// --- Wintun Function Pointers ---
 static WINTUN_CREATE_ADAPTER_FUNC* ptrCreateAdapter;
 static WINTUN_OPEN_ADAPTER_FUNC* ptrOpenAdapter;
 static WINTUN_START_SESSION_FUNC* ptrStartSession;
@@ -35,7 +34,6 @@ WINTUN_ADAPTER_HANDLE Adapter = NULL;
 WINTUN_SESSION_HANDLE Session = NULL;
 std::atomic<bool> IsRunning(false);
 
-// --- Go Bridge Types ---
 typedef void (*GoPacketCallback)(void* data, int len);
 typedef char* (*SubmitGameBlockFunc)(int duration, int playerCount);
 typedef double (*GetWalletBalanceFunc)(char* address);
@@ -44,6 +42,8 @@ typedef void (*InitPacketBridgeFunc)(void (*)(void*, int));
 typedef char* (*StartEdenNodeFunc)(const char* virtualIP);
 typedef void (*ConnectToPeerFunc)(const char* peerID);
 typedef char* (*GetIPForPeerFunc)(const char* peerID);
+typedef char* (*StartMatchFunc)(char* matchID, char* playerList);
+typedef char* (*GetWalletPubKeyFunc)();
 typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
 typedef char* (*AutoConnectToPeersFunc)();
@@ -58,13 +58,14 @@ typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
 typedef void (*SetSteamAPIKeyFunc)(char* key);
 
-// --- Go Function Pointers ---
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
 GetWalletBalanceFunc ptrGetWalletBalance = nullptr;
 SendTransactionFunc ptrSendTransaction = nullptr;
 StartEdenNodeFunc ptrStartEdenNode = nullptr;
 ConnectToPeerFunc ptrConnectToPeer = nullptr;
 GetIPForPeerFunc ptrGetIPForPeer = nullptr;
+StartMatchFunc ptrStartMatch = nullptr;
+GetWalletPubKeyFunc ptrGetWalletPubKey = nullptr;
 StopNodeFunc ptrStopNode = nullptr;
 GetMyPeerIDFunc ptrGetMyPeerID = nullptr;
 AutoConnectToPeersFunc ptrAutoConnect = nullptr;
@@ -159,7 +160,6 @@ bool LoadGoDLL() {
         return false;
     }
 
-    // Bind Functions
     auto ptrInitBridge = (InitPacketBridgeFunc)GetProcAddress(hGo, "InitPacketBridge");
     ptrStartEdenNode = (StartEdenNodeFunc)GetProcAddress(hGo, "StartEdenNode");
     ptrConnectToPeer = (ConnectToPeerFunc)GetProcAddress(hGo, "ConnectToPeer");
@@ -168,6 +168,8 @@ bool LoadGoDLL() {
     ptrGetMyPeerID = (GetMyPeerIDFunc)GetProcAddress(hGo, "GetMyPeerID");
     ptrAutoConnect = (AutoConnectToPeersFunc)GetProcAddress(hGo, "AutoConnectToPeers");
     ptrIsPeerAlive = (IsPeerAliveFunc)GetProcAddress(hGo, "IsPeerAlive");
+    ptrStartMatch = (StartMatchFunc)GetProcAddress(hGo, "StartMatch");
+    ptrGetWalletPubKey = (GetWalletPubKeyFunc)GetProcAddress(hGo, "GetWalletPubKey");
     ptrGetNetworkMatches = (GetNetworkMatchesFunc)GetProcAddress(hGo, "GetNetworkMatches");
     ptrSubmitGameBlock = (SubmitGameBlockFunc)GetProcAddress(hGo, "SubmitGameBlock");
     ptrGetWalletBalance = (GetWalletBalanceFunc)GetProcAddress(hGo, "GetWalletBalance");
@@ -363,4 +365,14 @@ extern "C" __declspec(dllexport) void UpdateSteamAPIKey(char* key) {
 extern "C" __declspec(dllexport) const char* GetSteamInventory(char* steamID) {
     if (ptrFetchMyInventory) return ptrFetchMyInventory(steamID);
     return "[]";
+}
+
+extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, char* playerList) {
+    if (ptrStartMatch) return ptrStartMatch(matchID, playerList);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* GetMyPublicKey() {
+    if (ptrGetWalletPubKey) return ptrGetWalletPubKey();
+    return "";
 }

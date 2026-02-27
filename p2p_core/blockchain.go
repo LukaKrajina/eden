@@ -8,12 +8,15 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 const (
@@ -23,6 +26,8 @@ const (
 	TxTypeResolve      = "RESOLVE_PAYOUT"
 	TxTypeList         = "LIST_ITEM"
 	TxTypeCloseExpired = "CLOSE_EXPIRED"
+	TxTypeMatchStart   = "MATCH_START"
+	TxTypeWitness      = "MATCH_WITNESS"
 )
 
 type Transaction struct {
@@ -94,28 +99,79 @@ type Block struct {
 }
 
 type Blockchain struct {
-	Chain          []Block
+	LastBlock      Block
 	Balances       map[string]float64
 	ActiveAuctions map[string]*Auction
 	ActivePools    map[string]*BettingPool
 	ActiveEscrows  map[string]*Escrow
 	AccountNonces  map[string]uint64
+	MatchRosters   map[string][]string          `json:"match_rosters"`
+	MatchVotes     map[string]map[string]string `json:"match_votes"`
+	Database       *leveldb.DB
+	DBPath         string
 	Mutex          sync.RWMutex
 }
 
 var EdenChain *Blockchain
 
-func InitializeChain() {
+func InitializeChain(dbPath string) {
+	db, err := leveldb.OpenFile(dbPath, nil)
+	if err != nil {
+		panic("Failed to open LevelDB: " + err.Error())
+	}
+
 	EdenChain = &Blockchain{
-		Chain: []Block{
-			{Index: 0, Timestamp: time.Now().Unix(), Hash: "GENESIS_BLOCK", PrevHash: "0"},
-		},
 		Balances:       make(map[string]float64),
 		ActiveAuctions: make(map[string]*Auction),
 		ActivePools:    make(map[string]*BettingPool),
 		ActiveEscrows:  make(map[string]*Escrow),
 		AccountNonces:  make(map[string]uint64),
+		MatchRosters:   make(map[string][]string),
+		MatchVotes:     make(map[string]map[string]string),
+		Database:       db,
+		DBPath:         dbPath,
 	}
+	EdenChain.LoadFromDB()
+}
+
+func (bc *Blockchain) SaveBlockToDB(b Block) {
+	data, _ := json.Marshal(b)
+	key := fmt.Sprintf("block_%d", b.Index)
+
+	bc.Database.Put([]byte(key), data, nil)
+
+	bc.Database.Put([]byte("latest_index"), []byte(strconv.Itoa(b.Index)), nil)
+}
+
+func (bc *Blockchain) LoadFromDB() {
+	latestBytes, err := bc.Database.Get([]byte("latest_index"), nil)
+	if err != nil {
+		fmt.Println("[DB] No history found. Creating Genesis Block.")
+		genesis := Block{
+			Index: 0, Timestamp: time.Now().Unix(), Hash: "GENESIS_BLOCK", PrevHash: "0",
+		}
+		bc.AddBlock(genesis)
+		return
+	}
+
+	latestIndex, _ := strconv.Atoi(string(latestBytes))
+	fmt.Printf("[DB] Found chain history up to height %d. Replaying...\n", latestIndex)
+
+	for i := 0; i <= latestIndex; i++ {
+		key := fmt.Sprintf("block_%d", i)
+		data, err := bc.Database.Get([]byte(key), nil)
+		if err != nil {
+			fmt.Printf("[DB] Error corrupted chain at block %d\n", i)
+			break
+		}
+
+		var b Block
+		json.Unmarshal(data, &b)
+
+		bc.ProcessBlockState(b)
+		bc.LastBlock = b
+	}
+	fmt.Println("[DB] State restoration complete.")
 }
 
 func (tx *Transaction) GenerateTxHash() []byte {
@@ -166,29 +222,49 @@ func VerifyTransaction(tx Transaction) bool {
 func (bc *Blockchain) AddBlock(b Block) bool {
 	bc.Mutex.Lock()
 	defer bc.Mutex.Unlock()
-
-	lastBlock := bc.Chain[len(bc.Chain)-1]
+	lastBlock := bc.LastBlock
 	if b.PrevHash != lastBlock.Hash {
-		fmt.Printf("[Chain] Hash mismatch. Expected prev: %s, Got: %s\n", lastBlock.Hash, b.PrevHash)
-		return false
-	}
-	if b.Index != lastBlock.Index+1 {
-		fmt.Printf("[Chain] Block gap detected. Local: %d, Incoming: %d\n", lastBlock.Index, b.Index)
 		return false
 	}
 
+	if b.Index != lastBlock.Index+1 {
+		return false
+	}
+
+	if !bc.ProcessBlockState(b) {
+		fmt.Println("[Chain] Block rejected due to invalid state transition")
+		return false
+	}
+
+	bc.LastBlock = b
+	bc.SaveBlockToDB(b)
+	return true
+}
+
+func (bc *Blockchain) GeneratePayouts(matchID string, winningTeam string) []Transaction {
+	pool, exists := bc.ActivePools[matchID]
+	if !exists || !pool.IsOpen {
+		return nil
+	}
+
+	return nil
+}
+
+func (bc *Blockchain) ProcessBlockState(b Block) bool {
 	for _, tx := range b.Transactions {
+
+		isSystemTx := tx.Sender == "SYSTEM_MINT" || tx.Sender == "SYSTEM_PAYOUT"
 
 		expectedNonce := bc.AccountNonces[tx.Sender]
 
-		if tx.Nonce != expectedNonce+1 {
-			fmt.Printf("[Chain] REJECTED: Invalid Nonce. Expected %d, Got %d\n", expectedNonce+1, tx.Nonce)
-			return false
-		}
-
-		if tx.Sender != "SYSTEM_MINT" {
+		if !isSystemTx {
 			if !VerifyTransaction(tx) {
 				fmt.Printf("[Chain] REJECTED: Invalid Signature for TX %s\n", tx.ID)
+				return false
+			}
+
+			if tx.Nonce != expectedNonce+1 {
+				fmt.Printf("[Chain] REJECTED: Invalid Nonce for %s. Expected %d, Got %d\n", tx.Sender, expectedNonce+1, tx.Nonce)
 				return false
 			}
 
@@ -196,7 +272,9 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 				fmt.Printf("[Chain] REJECTED: Insufficient funds for %s\n", tx.Sender)
 				return false
 			}
+
 			bc.Balances[tx.Sender] -= tx.Amount
+			bc.AccountNonces[tx.Sender]++
 		}
 
 		switch tx.Type {
@@ -217,12 +295,63 @@ func (bc *Blockchain) AddBlock(b Block) bool {
 
 		case TxTypeResolve:
 			bc.Balances[tx.Receiver] += tx.Amount
+
+		case TxTypeMatchStart:
+			parts := strings.Split(tx.Payload, "|")
+			if len(parts) == 2 {
+				matchID := parts[0]
+				players := strings.Split(parts[1], ",")
+				bc.MatchRosters[matchID] = players
+				bc.MatchVotes[matchID] = make(map[string]string)
+				fmt.Printf("[Consensus] Match %s started with %d players.\n", matchID, len(players))
+			}
+
+		case TxTypeWitness:
+			var matchID, votedWinner string
+			fmt.Sscanf(tx.Payload, "%s:%s", &matchID, &votedWinner)
+
+			roster, exists := bc.MatchRosters[matchID]
+			if !exists {
+				fmt.Printf("[Consensus] Ignored vote for unknown match %s\n", matchID)
+				continue
+			}
+
+			isParticipant := false
+			for _, p := range roster {
+				if p == tx.Sender {
+					isParticipant = true
+					break
+				}
+			}
+			if !isParticipant {
+				fmt.Printf("[Consensus] REJECTED vote from non-participant %s\n", tx.Sender)
+				continue
+			}
+
+			bc.MatchVotes[matchID][tx.Sender] = votedWinner
+			fmt.Printf("[Consensus] Player %s voted for %s in match %s\n", tx.Sender, votedWinner, matchID)
+
+			voteCounts := make(map[string]int)
+			for _, vote := range bc.MatchVotes[matchID] {
+				voteCounts[vote]++
+			}
+
+			majorityNeeded := len(roster) / 2
+			if voteCounts[votedWinner] > majorityNeeded {
+				fmt.Printf("[Consensus] Majority Reached! %s wins Match %s. Executing Payouts...\n", votedWinner, matchID)
+
+				payoutTxs := bc.GeneratePayouts(matchID, votedWinner)
+
+				for _, pTx := range payoutTxs {
+					bc.Balances[pTx.Receiver] += pTx.Amount
+					fmt.Printf("[Payout] Sent %.2f to %s\n", pTx.Amount, pTx.Receiver)
+				}
+
+				delete(bc.MatchRosters, matchID)
+				delete(bc.MatchVotes, matchID)
+			}
 		}
-
-		bc.AccountNonces[tx.Sender]++
 	}
-
-	bc.Chain = append(bc.Chain, b)
 	return true
 }
 
@@ -418,8 +547,8 @@ func (bc *Blockchain) VerifyTxSignature(tx Transaction) bool {
 
 func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {
 	bc.Mutex.RLock()
-	lastBlock := bc.Chain[len(bc.Chain)-1]
-	index := len(bc.Chain)
+	lastBlock := bc.LastBlock
+	index := bc.LastBlock.Index + 1
 	bc.Mutex.RUnlock()
 
 	rewardAmount := CalculateReward(&proof)
