@@ -22,8 +22,8 @@ class ApiServer {
           .addMiddleware(corsHeaders())
           .addHandler(_handleRequest);
 
-      final server = await shelf_io.serve(handler, '0.0.0.0', 3000);
-      print('[API] Serving at http://0.0.0.0:3000');
+      final server = await shelf_io.serve(handler, '0.0.0.0', 3001);
+      print('[API] Serving at http://0.0.0.0:3001');
       _isRunning = true;
     } catch (e) {
         print("[API] Failed to start server or connect to DB: $e");

@@ -658,7 +658,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   Future<void> _fetchMatches() async {
       try {
-        final response = await http.get(Uri.parse('http://127.0.0.1:3000/recent-matches'));
+        final response = await http.get(Uri.parse('http://127.0.0.1:3001/recent-matches'));
         print("API Response: ${response.statusCode} - ${response.body}");
         if (response.statusCode == 200) {
           setState(() {
@@ -677,7 +677,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     });
 
     try {
-      final response = await http.get(Uri.parse('http://127.0.0.1:3000/match/$id'));
+      final response = await http.get(Uri.parse('http://127.0.0.1:3001/match/$id'));
       print("API Response: ${response.statusCode} - ${response.body}");
       if (response.statusCode == 200) {
         setState(() {

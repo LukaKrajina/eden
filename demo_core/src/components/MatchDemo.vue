@@ -93,7 +93,7 @@ const selectedMatchId = ref<number | null>(null);
 
 onMounted(async () => {
   try {
-    const res = await fetch('http://localhost:3000/recent-matches');
+    const res = await fetch('http://localhost:3001/recent-matches');
     matches.value = await res.json();
   } catch (e) {
     console.error("API Error", e);
@@ -103,7 +103,7 @@ onMounted(async () => {
 const selectMatch = async (id: number) => {
   selectedMatchId.value = id;
   try {
-    const res = await fetch(`http://localhost:3000/match/${id}`);
+    const res = await fetch(`http://localhost:3001/match/${id}`);
     matchStats.value = await res.json();
   } catch (e) {
     console.error("Failed to load match details", e);
