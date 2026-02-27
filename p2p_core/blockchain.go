@@ -471,8 +471,18 @@ func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transac
 	}
 
 	if winningPoolTotal == 0 {
-		// Edge case: No winners. Burn/Keep pool (simplified here)
-		return nil
+		burnTx := Transaction{
+			ID:        fmt.Sprintf("burn_%s_%d", matchID, time.Now().UnixNano()),
+			Type:      TxTypeResolve,
+			Sender:    "SYSTEM_PAYOUT",
+			Receiver:  "BURN_ADDRESS",
+			Amount:    pool.TotalPool,
+			Timestamp: time.Now().Unix(),
+			Signature: "CONSENSUS_VERIFIED",
+		}
+
+		delete(bc.ActivePools, matchID)
+		return []Transaction{burnTx}
 	}
 
 	for _, bet := range pool.Bets {
