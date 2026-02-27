@@ -44,7 +44,7 @@ class GameRunner {
     }
 
     if (int.parse(maxPlayers) > 10) {
-      args.add('+sv_coaching_enabled 1');
+      args.addAll(['+sv_coaching_enabled', '1']);
     }
 
     print("[GameRunner] Starting Server at $virtualIP:$port");
@@ -74,8 +74,7 @@ class GameRunner {
   Future<void> startClient(String cs2Path, String hostIP, String playerName) async {
     final clientExe = p.join(cs2Path, 'game', 'bin', 'win64', 'cs2.exe');
     
-    // -insecure is sometimes needed for non-VAC servers
-    final args = ['-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
+    final args = ['-console','-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
 
     print("[GameRunner] Connecting Client as $playerName to $hostIP...");
     
