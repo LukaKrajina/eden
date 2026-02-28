@@ -78,6 +78,16 @@ class GameRunner {
 
     print("[GameRunner] Connecting Client as $playerName to $hostIP...");
     
+    // Windows Manual IP copy
+    try {
+      final clipProcess = await Process.start('clip', []);
+      clipProcess.stdin.write(hostIP);
+      await clipProcess.stdin.close();
+      print("[GameRunner] Host IP ($hostIP) copied to clipboard.");
+    } catch (e) {
+    print("[GameRunner] Failed to copy to clipboard: $e");
+  }
+
     try {
       _clientProcess = await Process.start(
         clientExe, 

@@ -7,9 +7,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -29,6 +31,8 @@ const (
 	TxTypeCloseExpired   = "CLOSE_EXPIRED"
 	TxTypeMatchStart     = "MATCH_START"
 	TxTypeWitness        = "MATCH_WITNESS"
+	TxTypeUpdateProfile  = "UPDATE_PROFILE"
+	TxTypeMatchResult    = "MATCH_RESULT"
 )
 
 type Transaction struct {
@@ -50,6 +54,18 @@ type GameProof struct {
 	MaxPlayers    int      `json:"max_players"`
 	QualityScore  int      `json:"quality_score"`
 	PlayerWitness []string `json:"witnesses"`
+}
+
+type UserProfile struct {
+	PeerID    string  `json:"peer_id"`
+	Username  string  `json:"username"`
+	AvatarURL string  `json:"avatar_url"`
+	XP        float64 `json:"xp"`
+	Level     int     `json:"level"`
+	Score     float64 `json:"score"`
+	AvgRating float64 `json:"avg_rating"`
+	Matches   int     `json:"matches"`
+	Wins      int     `json:"wins"`
 }
 
 type Auction struct {
@@ -102,6 +118,7 @@ type Block struct {
 type Blockchain struct {
 	LastBlock      Block
 	Balances       map[string]float64
+	Profiles       map[string]*UserProfile
 	ActiveAuctions map[string]*Auction
 	ActivePools    map[string]*BettingPool
 	ActiveEscrows  map[string]*Escrow
@@ -124,6 +141,7 @@ func InitializeChain(dbPath string) {
 
 	EdenChain = &Blockchain{
 		Balances:       make(map[string]float64),
+		Profiles:       make(map[string]*UserProfile),
 		ActiveAuctions: make(map[string]*Auction),
 		ActivePools:    make(map[string]*BettingPool),
 		ActiveEscrows:  make(map[string]*Escrow),
@@ -174,6 +192,33 @@ func (bc *Blockchain) LoadFromDB() {
 		bc.LastBlock = b
 	}
 	fmt.Println("[DB] State restoration complete.")
+}
+
+func GenerateFixedUsername(peerID string) string {
+	hash := sha256.Sum256([]byte(peerID))
+	num := binary.BigEndian.Uint32(hash[:4])
+	sequence := num % 1000000
+	return fmt.Sprintf("User%06d", sequence)
+}
+
+func (bc *Blockchain) GetOrInitProfile(peerID string) *UserProfile {
+	if profile, exists := bc.Profiles[peerID]; exists {
+		return profile
+	}
+
+	newProfile := &UserProfile{
+		PeerID:    peerID,
+		Username:  GenerateFixedUsername(peerID),
+		AvatarURL: "",
+		XP:        0,
+		Level:     0,
+		Score:     0.0,
+		AvgRating: 1.0,
+		Matches:   0,
+		Wins:      0,
+	}
+	bc.Profiles[peerID] = newProfile
+	return newProfile
 }
 
 func (tx *Transaction) GenerateTxHash() []byte {
@@ -276,6 +321,27 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 
 		switch tx.Type {
 
+		case TxTypeUpdateProfile:
+			parts := strings.Split(tx.Payload, "|")
+			if len(parts) >= 1 {
+				profile := bc.Profiles[tx.Sender]
+				if parts[0] != "" {
+					profile.AvatarURL = parts[0]
+				}
+				// If we allow username changes in future, handle parts[1] here
+			}
+
+		case TxTypeMatchResult:
+			var res struct {
+				TargetID      string  `json:"target_id"`
+				Win           bool    `json:"win"`
+				HLTVRating    float64 `json:"hltv_rating"`
+				TeamAvgRating float64 `json:"team_avg_rating"`
+			}
+			if err := json.Unmarshal([]byte(tx.Payload), &res); err == nil {
+				bc.processMatchProgression(res.TargetID, res.Win, res.HLTVRating, res.TeamAvgRating)
+			}
+
 		case TxTypeRegisterFriend:
 			code := tx.Payload
 			bc.FriendRegistry[code] = tx.Sender
@@ -356,6 +422,56 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 		}
 	}
 	return true
+}
+
+func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRating float64, teamAvg float64) {
+	profile := bc.GetOrInitProfile(peerID)
+
+	profile.Matches++
+	if win {
+		profile.Wins++
+	}
+	currentTotal := profile.AvgRating * float64(profile.Matches-1)
+	profile.AvgRating = (currentTotal + hltvRating) / float64(profile.Matches)
+
+	multiplier := 1.0
+	if hltvRating > 1.0 {
+		multiplier = hltvRating
+	}
+
+	xpGain := 100.0 * multiplier
+	if win {
+		xpGain += 50.0
+	}
+
+	profile.XP += xpGain
+
+	profile.Level = int(math.Sqrt(profile.XP/100.0)) + 1
+
+	scoreDelta := 0.0
+	const BaseScoreChange = 25.0
+
+	if win {
+		ratio := hltvRating / teamAvg
+		if teamAvg == 0 {
+			ratio = 1.0
+		}
+		scoreDelta = BaseScoreChange * ratio
+	} else {
+		ratio := teamAvg / hltvRating
+		if hltvRating == 0 {
+			ratio = 2.0
+		}
+		scoreDelta = -(BaseScoreChange * ratio)
+	}
+
+	profile.Score += scoreDelta
+	if profile.Score < 0 {
+		profile.Score = 0
+	}
+
+	fmt.Printf("[Progression] %s | XP +%.0f (Lvl %d) | Score %+.2f (%.2f)\n",
+		profile.Username, xpGain, profile.Level, scoreDelta, profile.Score)
 }
 
 func (bc *Blockchain) processListing(tx Transaction) {
