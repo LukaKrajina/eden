@@ -60,6 +60,8 @@ typedef void (*SetSteamAPIKeyFunc)(char* key);
 typedef char* (*GenerateFriendCodeFunc)();
 typedef char* (*AddFriendFunc)(char* code);
 typedef char* (*FetchFriendListFunc)();
+typedef char* (*UpdateMyProfileFunc)(char* avatarURL);
+typedef char* (*GetPeerProfileFunc)(char* peerID);
 typedef void (*FreeStringFunc)(char* str);
 
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
@@ -88,7 +90,8 @@ static FreeStringFunc ptrFreeString = nullptr;
 GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
 AddFriendFunc ptrAddFriend = nullptr;
 FetchFriendListFunc ptrFetchFriendList = nullptr;
-
+UpdateMyProfileFunc ptrUpdateMyProfile = nullptr;
+GetPeerProfileFunc ptrGetPeerProfile = nullptr;
 
 bool LoadWintun();
 void ReadFromTunLoop();
@@ -192,6 +195,8 @@ bool LoadGoDLL() {
     ptrGenerateFriendCode = (GenerateFriendCodeFunc)GetProcAddress(hGo, "GenerateAndRegisterFriendCode");
     ptrAddFriend = (AddFriendFunc)GetProcAddress(hGo, "AddFriendByCode");
     ptrFetchFriendList = (FetchFriendListFunc)GetProcAddress(hGo, "FetchFriendList");
+    ptrUpdateMyProfile = (UpdateMyProfileFunc)GetProcAddress(hGo, "UpdateMyProfile");
+    ptrGetPeerProfile = (GetPeerProfileFunc)GetProcAddress(hGo, "GetPeerProfile");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -398,6 +403,16 @@ extern "C" __declspec(dllexport) const char* AddFriend(char* code) {
 extern "C" __declspec(dllexport) const char* GetFriends() {
     if (ptrFetchFriendList) return ptrFetchFriendList();
     return "[]";
+}
+
+extern "C" __declspec(dllexport) const char* UpdateProfile(char* avatarURL) {
+    if (ptrUpdateMyProfile) return ptrUpdateMyProfile(avatarURL);
+    return "Error: Function Not Loaded";
+}
+
+extern "C" __declspec(dllexport) const char* GetPeerProfile(char* peerID) {
+    if (ptrGetPeerProfile) return ptrGetPeerProfile(peerID);
+    return "{}";
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {

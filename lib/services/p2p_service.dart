@@ -72,6 +72,12 @@ typedef GetFriendsDart = Pointer<Utf8> Function();
 typedef RegisterSteamIDC = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 typedef RegisterSteamIDDart = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 
+typedef UpdateProfileC = Pointer<Utf8> Function(Pointer<Utf8> url);
+typedef UpdateProfileDart = Pointer<Utf8> Function(Pointer<Utf8> url);
+
+typedef GetPeerProfileC = Pointer<Utf8> Function(Pointer<Utf8> id);
+typedef GetPeerProfileDart = Pointer<Utf8> Function(Pointer<Utf8> id);
+
 typedef FreeStringC = Void Function(Pointer<Utf8> str);
 typedef FreeStringDart = void Function(Pointer<Utf8> str);
 
@@ -110,6 +116,8 @@ class P2PService {
   late AddFriendDart _addFriend;
   late GetFriendsDart _getFriends;
   late RegisterSteamIDDart _registerSteamID;
+  late UpdateProfileDart _updateProfile;
+  late GetPeerProfileDart _getPeerProfile;
   late FreeStringDart _freeString;
 
   P2PService._internal() {
@@ -149,6 +157,8 @@ class P2PService {
     _addFriend = _lib.lookupFunction<AddFriendC, AddFriendDart>('AddFriend');
     _getFriends = _lib.lookupFunction<GetFriendsC, GetFriendsDart>('GetFriends');
     _registerSteamID = _lib.lookupFunction<RegisterSteamIDC, RegisterSteamIDDart>('RegisterMySteamID');
+    _updateProfile = _lib.lookupFunction<UpdateProfileC, UpdateProfileDart>('UpdateProfile');
+    _getPeerProfile = _lib.lookupFunction<GetPeerProfileC, GetPeerProfileDart>('GetPeerProfile');
     _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('FreeString');
   }
 
@@ -381,6 +391,36 @@ class P2PService {
       return jsonDecode(jsonStr);
     } catch (e) {
       return [];
+    }
+  }
+
+  Future<String> updateMyProfile(String avatarURL) async {
+    if (!_isInitialized) return "Offline";
+    final ptr = avatarURL.toNativeUtf8();
+    try {
+      return _consumeNativeString(_updateProfile(ptr));
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<Map<String, dynamic>> getPeerProfile(String peerID) async {
+    if (!_isInitialized) return {};
+    
+    final ptr = peerID.toNativeUtf8();
+    String jsonStr;
+    
+    try {
+      jsonStr = _consumeNativeString(_getPeerProfile(ptr));
+    } finally {
+      calloc.free(ptr);
+    }
+
+    try {
+      return jsonDecode(jsonStr);
+    } catch (e) {
+      print("[P2P] Failed to parse profile JSON: $e");
+      return {};
     }
   }
 }
