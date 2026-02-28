@@ -22,17 +22,18 @@ import (
 )
 
 const (
-	TxTypeRegisterFriend = "REGISTER_FRIEND"
-	TxTypeTransfer       = "TRANSFER"
-	TxTypeBet            = "BET"
-	TxTypeEscrow         = "ESCROW_LOCK"
-	TxTypeResolve        = "RESOLVE_PAYOUT"
-	TxTypeList           = "LIST_ITEM"
-	TxTypeCloseExpired   = "CLOSE_EXPIRED"
-	TxTypeMatchStart     = "MATCH_START"
-	TxTypeWitness        = "MATCH_WITNESS"
-	TxTypeUpdateProfile  = "UPDATE_PROFILE"
-	TxTypeMatchResult    = "MATCH_RESULT"
+	TxTypeRegisterSteamID = "REGISTER_STEAM"
+	TxTypeRegisterFriend  = "REGISTER_FRIEND"
+	TxTypeTransfer        = "TRANSFER"
+	TxTypeBet             = "BET"
+	TxTypeEscrow          = "ESCROW_LOCK"
+	TxTypeResolve         = "RESOLVE_PAYOUT"
+	TxTypeList            = "LIST_ITEM"
+	TxTypeCloseExpired    = "CLOSE_EXPIRED"
+	TxTypeMatchStart      = "MATCH_START"
+	TxTypeWitness         = "MATCH_WITNESS"
+	TxTypeUpdateProfile   = "UPDATE_PROFILE"
+	TxTypeMatchResult     = "MATCH_RESULT"
 )
 
 type Transaction struct {
@@ -58,6 +59,7 @@ type GameProof struct {
 
 type UserProfile struct {
 	PeerID    string  `json:"peer_id"`
+	SteamID   string  `json:"steam_id"`
 	Username  string  `json:"username"`
 	AvatarURL string  `json:"avatar_url"`
 	XP        float64 `json:"xp"`
@@ -78,6 +80,12 @@ type Auction struct {
 	Price     float64 `json:"price"`
 	ExpiresAt int64   `json:"expires_at"`
 	State     string  `json:"state"`
+}
+
+type MatchSessionInfo struct {
+	HostID    string
+	StartTime int64
+	Roster    []string
 }
 
 type Bet struct {
@@ -119,11 +127,12 @@ type Blockchain struct {
 	LastBlock      Block
 	Balances       map[string]float64
 	Profiles       map[string]*UserProfile
+	SteamToPeerID  map[string]string
 	ActiveAuctions map[string]*Auction
 	ActivePools    map[string]*BettingPool
 	ActiveEscrows  map[string]*Escrow
 	AccountNonces  map[string]uint64
-	MatchRosters   map[string][]string          `json:"match_rosters"`
+	MatchSessions  map[string]MatchSessionInfo
 	MatchVotes     map[string]map[string]string `json:"match_votes"`
 	Database       *leveldb.DB
 	DBPath         string
@@ -142,11 +151,11 @@ func InitializeChain(dbPath string) {
 	EdenChain = &Blockchain{
 		Balances:       make(map[string]float64),
 		Profiles:       make(map[string]*UserProfile),
+		SteamToPeerID:  make(map[string]string),
 		ActiveAuctions: make(map[string]*Auction),
 		ActivePools:    make(map[string]*BettingPool),
 		ActiveEscrows:  make(map[string]*Escrow),
 		AccountNonces:  make(map[string]uint64),
-		MatchRosters:   make(map[string][]string),
 		MatchVotes:     make(map[string]map[string]string),
 		Database:       db,
 		DBPath:         dbPath,
@@ -208,6 +217,7 @@ func (bc *Blockchain) GetOrInitProfile(peerID string) *UserProfile {
 
 	newProfile := &UserProfile{
 		PeerID:    peerID,
+		SteamID:   "",
 		Username:  GenerateFixedUsername(peerID),
 		AvatarURL: "",
 		XP:        0,
@@ -320,15 +330,24 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 		}
 
 		switch tx.Type {
+		case TxTypeRegisterSteamID:
+			steamID := tx.Payload
+			if steamID != "" {
+				if existingOwner, taken := bc.SteamToPeerID[steamID]; taken && existingOwner != tx.Sender {
+					fmt.Printf("[Identity] REJECT: SteamID %s already claimed by %s\n", steamID, existingOwner)
+				} else {
+					profile := bc.GetOrInitProfile(tx.Sender)
+					profile.SteamID = steamID
+					bc.SteamToPeerID[steamID] = tx.Sender
+					fmt.Printf("[Identity] Peer %s registered SteamID %s\n", profile.Username, steamID)
+				}
+			}
 
 		case TxTypeUpdateProfile:
-			parts := strings.Split(tx.Payload, "|")
-			if len(parts) >= 1 {
-				profile := bc.Profiles[tx.Sender]
-				if parts[0] != "" {
-					profile.AvatarURL = parts[0]
-				}
-				// If we allow username changes in future, handle parts[1] here
+			if tx.Payload != "" {
+				profile := bc.GetOrInitProfile(tx.Sender)
+				profile.AvatarURL = tx.Payload
+				profile.Username = tx.Payload
 			}
 
 		case TxTypeMatchResult:
@@ -370,58 +389,121 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 			if len(parts) == 2 {
 				matchID := parts[0]
 				players := strings.Split(parts[1], ",")
-				bc.MatchRosters[matchID] = players
+				bc.MatchSessions[matchID] = MatchSessionInfo{
+					HostID:    tx.Sender,
+					StartTime: tx.Timestamp,
+					Roster:    players,
+				}
 				bc.MatchVotes[matchID] = make(map[string]string)
 				fmt.Printf("[Consensus] Match %s started with %d players.\n", matchID, len(players))
 			}
 
 		case TxTypeWitness:
-			var matchID, votedWinner string
-			fmt.Sscanf(tx.Payload, "%s:%s", &matchID, &votedWinner)
 
-			roster, exists := bc.MatchRosters[matchID]
-			if !exists {
-				fmt.Printf("[Consensus] Ignored vote for unknown match %s\n", matchID)
+			parts := strings.Split(tx.Payload, ":")
+			if len(parts) < 2 {
 				continue
 			}
 
+			matchID := parts[0]
+			votedWinner := parts[1] // "CT" or "T"
+			votedMVP := "NONE"
+			if len(parts) > 2 {
+				votedMVP = parts[2]
+			} // "SteamID"
+
+			// Retrieve Session Info
+			session, exists := bc.MatchSessions[matchID]
+			if !exists {
+				continue
+			}
+
+			// Verify Voter Participation
 			isParticipant := false
-			for _, p := range roster {
+			for _, p := range session.Roster {
 				if p == tx.Sender {
 					isParticipant = true
 					break
 				}
 			}
 			if !isParticipant {
-				fmt.Printf("[Consensus] REJECTED vote from non-participant %s\n", tx.Sender)
 				continue
 			}
 
-			bc.MatchVotes[matchID][tx.Sender] = votedWinner
-			fmt.Printf("[Consensus] Player %s voted for %s in match %s\n", tx.Sender, votedWinner, matchID)
+			voteKey := fmt.Sprintf("%s|%s", votedWinner, votedMVP)
+			bc.MatchVotes[matchID][tx.Sender] = voteKey
 
 			voteCounts := make(map[string]int)
-			for _, vote := range bc.MatchVotes[matchID] {
-				voteCounts[vote]++
+			for _, v := range bc.MatchVotes[matchID] {
+				voteCounts[v]++
 			}
 
-			majorityNeeded := len(roster) / 2
-			if voteCounts[votedWinner] > majorityNeeded {
-				fmt.Printf("[Consensus] Majority Reached! %s wins Match %s. Executing Payouts...\n", votedWinner, matchID)
+			if voteCounts[voteKey] > len(session.Roster)/2 {
+				fmt.Printf("[Consensus] Match %s Finalized. Winner: %s\n", matchID, votedWinner)
 
-				payoutTxs := bc.GeneratePayouts(matchID, votedWinner)
-
-				for _, pTx := range payoutTxs {
-					bc.Balances[pTx.Receiver] += pTx.Amount
-					fmt.Printf("[Payout] Sent %.2f to %s\n", pTx.Amount, pTx.Receiver)
+				duration := tx.Timestamp - session.StartTime
+				if duration < 0 {
+					duration = 600
 				}
 
-				delete(bc.MatchRosters, matchID)
+				seed := time.Now().UnixNano()
+				rng := math.Round(float64(seed)) * 0.000011574074
+				hostReward := float64(duration) * rng
+
+				mintTx := Transaction{
+					ID:        fmt.Sprintf("mint_%s", matchID),
+					Type:      TxTypeTransfer,
+					Sender:    "SYSTEM_MINT",
+					Receiver:  session.HostID,
+					Amount:    hostReward,
+					Timestamp: time.Now().Unix(),
+					Signature: "CONSENSUS_REWARD",
+				}
+
+				bc.Balances[mintTx.Receiver] += mintTx.Amount
+				fmt.Printf("[Reward] Host %s earned %.2f EDN\n", session.HostID, hostReward)
+
+				bettingTxs := bc.GeneratePayouts(matchID, votedWinner)
+				for _, bTx := range bettingTxs {
+					bc.Balances[bTx.Receiver] += bTx.Amount
+				}
+
+				bc.DistributePlayerXP(matchID, session.Roster, votedWinner, votedMVP)
+
+				delete(bc.MatchSessions, matchID)
 				delete(bc.MatchVotes, matchID)
 			}
 		}
 	}
 	return true
+}
+
+func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string) {
+	mvpPeerID := ""
+	if pid, ok := bc.SteamToPeerID[mvpSteamID]; ok {
+		mvpPeerID = pid
+	}
+
+	for _, peerID := range roster {
+		isMVP := (peerID == mvpPeerID)
+
+		rating := 1.0
+		if isMVP {
+			rating = 2.0
+		}
+
+		payloadMap := map[string]interface{}{
+			"target_id":   peerID,
+			"win":         isMVP,
+			"hltv_rating": rating,
+		}
+
+		if data, err := json.Marshal(payloadMap); err == nil {
+			fmt.Printf("[XP] Processing Virtual Update: %s\n", string(data))
+		}
+
+		bc.processMatchProgression(peerID, isMVP, rating, 1.0)
+	}
 }
 
 func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRating float64, teamAvg float64) {
@@ -446,19 +528,33 @@ func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRatin
 
 	profile.XP += xpGain
 
-	profile.Level = int(math.Sqrt(profile.XP/100.0)) + 1
+	newLevel := int(math.Sqrt(profile.XP/100.0)) + 1
+	if newLevel > profile.Level {
+		fmt.Printf("[Level Up] %s reached Level %d!\n", profile.Username, newLevel)
+	}
+
+	profile.Level = newLevel
 
 	scoreDelta := 0.0
 	const BaseScoreChange = 25.0
 
+	safeTeamAvg := teamAvg
+	if safeTeamAvg < 0.1 {
+		safeTeamAvg = 1.0
+	}
+	safePlayerRating := hltvRating
+	if safePlayerRating < 0.1 {
+		safePlayerRating = 0.5
+	}
+
 	if win {
-		ratio := hltvRating / teamAvg
+		ratio := hltvRating / safeTeamAvg
 		if teamAvg == 0 {
 			ratio = 1.0
 		}
 		scoreDelta = BaseScoreChange * ratio
 	} else {
-		ratio := teamAvg / hltvRating
+		ratio := safeTeamAvg / hltvRating
 		if hltvRating == 0 {
 			ratio = 2.0
 		}

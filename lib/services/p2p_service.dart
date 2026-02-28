@@ -69,6 +69,12 @@ typedef AddFriendDart = Pointer<Utf8> Function(Pointer<Utf8> code);
 typedef GetFriendsC = Pointer<Utf8> Function();
 typedef GetFriendsDart = Pointer<Utf8> Function();
 
+typedef RegisterSteamIDC = Pointer<Utf8> Function(Pointer<Utf8> steamID);
+typedef RegisterSteamIDDart = Pointer<Utf8> Function(Pointer<Utf8> steamID);
+
+typedef FreeStringC = Void Function(Pointer<Utf8> str);
+typedef FreeStringDart = void Function(Pointer<Utf8> str);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -103,6 +109,8 @@ class P2PService {
   late RegisterFriendDart _registerFriend;
   late AddFriendDart _addFriend;
   late GetFriendsDart _getFriends;
+  late RegisterSteamIDDart _registerSteamID;
+  late FreeStringDart _freeString;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -140,6 +148,18 @@ class P2PService {
     _registerFriend = _lib.lookupFunction<RegisterFriendC, RegisterFriendDart>('RegisterAndGetFriendCode');
     _addFriend = _lib.lookupFunction<AddFriendC, AddFriendDart>('AddFriend');
     _getFriends = _lib.lookupFunction<GetFriendsC, GetFriendsDart>('GetFriends');
+    _registerSteamID = _lib.lookupFunction<RegisterSteamIDC, RegisterSteamIDDart>('RegisterMySteamID');
+    _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('FreeString');
+  }
+
+  String _consumeNativeString(Pointer<Utf8> ptr) {
+    if (ptr == nullptr) return "";
+    try {
+      final str = ptr.toDartString();
+      return str;
+    } finally {
+      _freeString(ptr);
+    }
   }
 
   void start() {
@@ -159,7 +179,7 @@ class P2PService {
 
   Future<String> getMyID() async {
     if (!_isInitialized) return "Offline";
-    return _getLocalPeerID().toDartString();
+    return _consumeNativeString(_getLocalPeerID());
   }
 
   String getVirtualIPForPeer(String peerID) {
@@ -202,12 +222,12 @@ class P2PService {
 
   Future<String> findMatch() async {
     if (!_isInitialized) return "Error: Engine Not Loaded";
-    return _findMatch().toDartString();
+    return _consumeNativeString(_findMatch());
   }
 
   Future<String> submitMatchReward(int duration, int playerCount) async {
     if (!_isInitialized) return "Error: Engine Offline";
-    return _mineBlock(duration, playerCount).toDartString();
+    return _consumeNativeString(_mineBlock(duration, playerCount));
   }
 
   Future<double> getBalance(String address) async {
@@ -237,7 +257,7 @@ class P2PService {
   if (!_isInitialized) return "Offline";
   final aPtr = assetID.toNativeUtf8();
   try {
-    return _listAuctionItem(aPtr, price, durationSeconds).toDartString();
+    return _consumeNativeString(_listAuctionItem(aPtr, price, durationSeconds));
   } finally {
     calloc.free(aPtr);
   }
@@ -246,7 +266,7 @@ class P2PService {
   Future<List<dynamic>> getActiveAuctions() async {
     if (!_isInitialized) return [];
     final ptr = _fetchAuctions();
-    final jsonStr = ptr.toDartString();
+    final jsonStr = _consumeNativeString(ptr);
     try {
       return jsonDecode(jsonStr);
     } catch (e) {
@@ -259,7 +279,7 @@ class P2PService {
     final mPtr = matchID.toNativeUtf8();
     final tPtr = team.toNativeUtf8();
     try {
-      return _placeBet(mPtr, tPtr, amount).toDartString();
+      return _consumeNativeString(_placeBet(mPtr, tPtr, amount));
     } finally {
       calloc.free(mPtr);
       calloc.free(tPtr);
@@ -271,7 +291,7 @@ class P2PService {
     final sPtr = sellerID.toNativeUtf8();
     final aPtr = assetID.toNativeUtf8();
     try {
-      return _buyItem(sPtr, aPtr, price).toDartString();
+      return _consumeNativeString(_buyItem(sPtr, aPtr, price));
     } finally {
       calloc.free(sPtr);
       calloc.free(aPtr);
@@ -302,9 +322,13 @@ class P2PService {
 
   Future<List<dynamic>> getSteamInventory(String steamID) async {
     final ptrStr = steamID.toNativeUtf8();
-    final res = _getSteamInventory(ptrStr).toDartString();
+    final res = _consumeNativeString(_getSteamInventory(ptrStr));
     calloc.free(ptrStr);
-    return jsonDecode(res);
+    try {
+        return jsonDecode(res);
+    } catch (e) {
+        return [];
+    }
   }
 
   Future<String> listRichItem(String assetID, String name, String img, String wear, double price, int duration) async {
@@ -315,7 +339,7 @@ class P2PService {
   Future<List<dynamic>> getLiveMatches() async {
     if (!_isInitialized) return [];
     final ptr = _fetchLiveMatches();
-    final jsonStr = ptr.toDartString();
+    final jsonStr = _consumeNativeString(ptr);
     try {
       return jsonDecode(jsonStr);
     } catch (e) {
@@ -326,14 +350,24 @@ class P2PService {
 
   Future<String> generateMyFriendCode() async {
     if (!_isInitialized) return "Offline";
-    return _registerFriend().toDartString();
+    return _consumeNativeString(_registerFriend());
   }
 
   Future<String> addFriendByCode(String code) async {
     if (!_isInitialized) return "Offline";
     final ptr = code.toNativeUtf8();
     try {
-      return _addFriend(ptr).toDartString();
+      return _consumeNativeString(_addFriend(ptr));
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<String> registerSteamID(String steamID) async {
+    if (!_isInitialized) return "Offline";
+    final ptr = steamID.toNativeUtf8();
+    try {
+      return _consumeNativeString(_registerSteamID(ptr));
     } finally {
       calloc.free(ptr);
     }
@@ -342,8 +376,9 @@ class P2PService {
   Future<List<dynamic>> getFriendList() async {
     if (!_isInitialized) return [];
     final ptr = _getFriends();
+    final jsonStr = _consumeNativeString(ptr);
     try {
-      return jsonDecode(ptr.toDartString());
+      return jsonDecode(jsonStr);
     } catch (e) {
       return [];
     }

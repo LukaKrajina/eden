@@ -67,18 +67,24 @@ const (
 )
 
 var (
-	h              host.Host
-	ctx            context.Context
-	kademliaDHT    *dht.IpfsDHT
-	activeStream   network.Stream
-	streamLock     sync.Mutex
-	pubSub         *pubsub.PubSub
-	blockTopic     *pubsub.Topic
-	currentMatchID string
-	bettingTopic   *pubsub.Topic
-	matchFeedTopic *pubsub.Topic
-	networkMatches = make(map[string]MatchAnnouncement)
-	matchesMutex   sync.RWMutex
+	h                 host.Host
+	ctx               context.Context
+	kademliaDHT       *dht.IpfsDHT
+	activeStream      network.Stream
+	streamLock        sync.Mutex
+	pubSub            *pubsub.PubSub
+	blockTopic        *pubsub.Topic
+	currentMatchID    string
+	lastBroadcastHash string
+	lastBroadcastTime int64
+	bettingTopic      *pubsub.Topic
+	matchFeedTopic    *pubsub.Topic
+	networkMatches    = make(map[string]MatchAnnouncement)
+	matchesMutex      sync.RWMutex
+
+	matchLive  bool   = false
+	ctTeamName string = "CT Team"
+	tTeamName  string = "T Team"
 
 	bufferPool = sync.Pool{
 		New: func() interface{} {
@@ -117,6 +123,32 @@ type GSIState struct {
 			Score int `json:"score"`
 		} `json:"team_t"`
 	} `json:"map"`
+	Player struct {
+		SteamID    string `json:"steamid"`
+		Name       string `json:"name"`
+		Team       string `json:"team"`
+		MatchStats struct {
+			Kills   int `json:"kills"`
+			Assists int `json:"assists"`
+			Deaths  int `json:"deaths"`
+			MVPs    int `json:"mvps"`
+			Score   int `json:"score"`
+		} `json:"match_stats"`
+		State struct {
+			Health     int `json:"health"`
+			RoundKills int `json:"round_kills"`
+		} `json:"state"`
+	} `json:"player"`
+}
+
+type LiveMatchSession struct {
+	MatchID     string
+	CTCaptain   string
+	TCaptain    string
+	CTTeamName  string
+	TTeamName   string
+	SteamRoster map[string]string
+	Scores      map[string]int
 }
 
 type FriendInfo struct {
@@ -201,11 +233,80 @@ var friendMutex sync.RWMutex
 var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
+var sessionMutex sync.RWMutex
 var myPeerID string
 var myPrivKey string
 var myPubKey string
+var state GSIState
+var roundsPlayed int = 0
+var activeSession *LiveMatchSession
+var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
 
-var FriendSystemKey = []byte("")
+//export UpdateMyProfile
+func UpdateMyProfile(avatarURL *C.char) *C.char {
+	url := C.GoString(avatarURL)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("prof_%d", time.Now().UnixNano()),
+		Type:      TxTypeUpdateProfile,
+		Sender:    h.ID().String(),
+		Receiver:  "IDENTITY_CONTRACT",
+		Amount:    0,
+		Payload:   url,
+		Timestamp: time.Now().Unix(),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		return C.CString("Error: Signing Failed")
+	}
+
+	EdenChain.Mutex.RLock()
+	lastIndex := EdenChain.LastBlock.Index
+	prevHash := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	newBlock := Block{
+		Index:        lastIndex + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     prevHash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString("Success")
+	}
+	return C.CString("Error: Block Rejected")
+}
+
+//export GetPeerProfile
+func GetPeerProfile(peerID *C.char) *C.char {
+	pid := C.GoString(peerID)
+	if pid == "" {
+		pid = h.ID().String()
+	}
+
+	EdenChain.Mutex.RLock()
+	profile := EdenChain.GetOrInitProfile(pid)
+	EdenChain.Mutex.RUnlock()
+
+	data, _ := json.Marshal(profile)
+	return C.CString(string(data))
+}
+
+func calculateRating(kills, deaths, assist, roundKills int) float64 {
+	if deaths == 0 {
+		deaths = 1
+	}
+	kdr := float64(kills) + (float64(assist)*0.5)/float64(deaths)
+	impact := 1.0 + (float64(roundKills) * 0.1)
+	rating := (kdr * 0.7) + (impact * 0.3)
+	if rating < 0.1 {
+		rating = 0.1
+	}
+	return rating
+}
 
 func StartGSIServer() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -214,13 +315,85 @@ func StartGSIServer() {
 		}
 
 		body, _ := io.ReadAll(r.Body)
-		var state GSIState
+		var rawData map[string]interface{}
+		json.Unmarshal(body, &rawData)
 		json.Unmarshal(body, &state)
-
 		w.WriteHeader(http.StatusOK)
 
+		if state.Map.Phase == "warmup" {
+			matchLive = false
+		}
+
 		if currentMatchID != "" && state.Map.Phase == "live" {
-			if time.Now().Unix()%5 == 0 {
+			matchLive = true
+			sessionMutex.Lock()
+
+			if activeSession == nil || activeSession.MatchID != currentMatchID {
+				activeSession = &LiveMatchSession{
+					MatchID:     currentMatchID,
+					SteamRoster: make(map[string]string),
+					Scores:      make(map[string]int),
+				}
+				fmt.Println("[Match] New Session Initialized")
+			}
+
+			if activeSession == nil || activeSession.MatchID != currentMatchID {
+				activeSession = &LiveMatchSession{
+					MatchID:     currentMatchID,
+					SteamRoster: make(map[string]string),
+					Scores:      make(map[string]int),
+				}
+				fmt.Println("[Match] New Session Initialized")
+			}
+
+			if allPlayers, ok := rawData["allplayers"].(map[string]interface{}); ok {
+				var topCTScore = -1
+				var topTScore = -1
+				var potentialCTCap = ""
+				var potentialTCap = ""
+
+				for steamID, pData := range allPlayers {
+					pMap := pData.(map[string]interface{})
+					name := pMap["name"].(string)
+					team := pMap["team"].(string)
+
+					matchStats := pMap["match_stats"].(map[string]interface{})
+					score := int(matchStats["score"].(float64))
+
+					activeSession.SteamRoster[steamID] = team
+					activeSession.Scores[steamID] = score
+
+					if team == "CT" {
+						if score > topCTScore {
+							topCTScore = score
+							potentialCTCap = name
+						}
+					} else if team == "T" {
+						if score > topTScore {
+							topTScore = score
+							potentialTCap = name
+						}
+					}
+				}
+
+				if activeSession.CTTeamName == "" && potentialCTCap != "" {
+					activeSession.CTCaptain = potentialCTCap
+					activeSession.CTTeamName = fmt.Sprintf("%s's Team", potentialCTCap)
+					fmt.Printf("[Match] CT Team locked as: %s\n", activeSession.CTTeamName)
+				}
+				if activeSession.TTeamName == "" && potentialTCap != "" {
+					activeSession.TCaptain = potentialTCap
+					activeSession.TTeamName = fmt.Sprintf("%s's Team", potentialTCap)
+					fmt.Printf("[Match] T Team locked as: %s\n", activeSession.TTeamName)
+				}
+			}
+			sessionMutex.Unlock()
+
+			currentHash := fmt.Sprintf("%s-%d-%d-%s", state.Map.Phase, state.Map.TeamCT.Score, state.Map.TeamT.Score, state.Map.Name)
+			now := time.Now().Unix()
+
+			if currentHash != lastBroadcastHash || now-lastBroadcastTime >= 5 {
+				sessionMutex.RLock()
 				ann := MatchAnnouncement{
 					MatchID:   currentMatchID,
 					HostID:    h.ID().String(),
@@ -228,24 +401,54 @@ func StartGSIServer() {
 					ScoreCT:   state.Map.TeamCT.Score,
 					ScoreT:    state.Map.TeamT.Score,
 					Phase:     "live",
-					Timestamp: time.Now().Unix(),
+					Timestamp: now,
 				}
+				sessionMutex.RUnlock()
 
 				if data, err := json.Marshal(ann); err == nil {
 					if matchFeedTopic != nil {
 						matchFeedTopic.Publish(ctx, data)
 					}
+					lastBroadcastHash = currentHash
+					lastBroadcastTime = now
 				}
 			}
 		}
 
 		if state.Map.Phase == "gameover" && currentMatchID != "" {
+			sessionMutex.Lock()
+			defer sessionMutex.Unlock()
+
 			myVerdict := "CT"
+			winningTeamName := activeSession.CTTeamName
 			if state.Map.TeamT.Score > state.Map.TeamCT.Score {
 				myVerdict = "T"
+				winningTeamName = activeSession.TTeamName
 			}
 
-			fmt.Printf("[GSI] Match Ended. I witnessed %s win. Broadcasting vote...\n", myVerdict)
+			mvpSteamID := "NONE"
+			highestScore := -1
+
+			for steamID, team := range activeSession.SteamRoster {
+				if team == myVerdict {
+					if score, ok := activeSession.Scores[steamID]; ok {
+						if score > highestScore {
+							highestScore = score
+							mvpSteamID = steamID
+						}
+					}
+				}
+			}
+
+			var alignmentParts []string
+			for sID, team := range activeSession.SteamRoster {
+				alignmentParts = append(alignmentParts, fmt.Sprintf("%s=%s", sID, team))
+			}
+			alignmentStr := strings.Join(alignmentParts, ",")
+
+			fmt.Printf("[GSI] Match Ended. Winner: %s | MVP: %s. Broadcasting Vote...\n", winningTeamName, mvpSteamID)
+
+			votePayload := fmt.Sprintf("%s:%s:%s:%s", currentMatchID, myVerdict, mvpSteamID, alignmentStr)
 
 			tx := Transaction{
 				ID:        fmt.Sprintf("vote_%s_%s", currentMatchID, h.ID().String()),
@@ -253,15 +456,17 @@ func StartGSIServer() {
 				Sender:    h.ID().String(),
 				Receiver:  "CONSENSUS_ENGINE",
 				Amount:    0,
-				Payload:   fmt.Sprintf("%s:%s", currentMatchID, myVerdict),
+				Payload:   votePayload,
 				Timestamp: time.Now().Unix(),
 			}
 
 			SignTransaction(myPrivKey, &tx)
+
 			EdenChain.Mutex.RLock()
 			lastIndex := EdenChain.LastBlock.Index
 			prevHash := EdenChain.LastBlock.Hash
 			EdenChain.Mutex.RUnlock()
+
 			newBlock := Block{
 				Index:        lastIndex + 1,
 				Timestamp:    time.Now().Unix(),
@@ -275,6 +480,7 @@ func StartGSIServer() {
 				fmt.Println("[GSI] Vote cast successfully.")
 			}
 
+			activeSession = nil
 			currentMatchID = ""
 		}
 	})
@@ -466,6 +672,7 @@ func readFrame(s network.Stream) ([]byte, error) {
 
 //export StartEdenNode
 func StartEdenNode(virtualIP *C.char) *C.char {
+
 	ctx = context.Background()
 
 	InitializeWallet()
@@ -1154,6 +1361,11 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 	}
 
 	payloadLen := int(len)
+
+	if payloadLen <= 0 || payloadLen > MaxPayloadSize {
+		return
+	}
+
 	totalLen := 7 + payloadLen
 
 	bufPtr := bufferPool.Get().([]byte)
@@ -1324,6 +1536,47 @@ func broadcastBlock(b Block) {
 	}
 	data, _ := json.Marshal(b)
 	blockTopic.Publish(ctx, data)
+}
+
+//export RegisterMySteamID
+func RegisterMySteamID(steamID *C.char) *C.char {
+	sID := C.GoString(steamID)
+
+	EdenChain.Mutex.RLock()
+	existingOwner, exists := EdenChain.SteamToPeerID[sID]
+	EdenChain.Mutex.RUnlock()
+
+	if exists && existingOwner == h.ID().String() {
+		return C.CString("Already Registered")
+	}
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("reg_steam_%d", time.Now().UnixNano()),
+		Type:      TxTypeRegisterSteamID,
+		Sender:    h.ID().String(),
+		Receiver:  "IDENTITY_CONTRACT",
+		Amount:    0,
+		Payload:   sID,
+		Timestamp: time.Now().Unix(),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		return C.CString("Error: Signing Failed")
+	}
+
+	newBlock := Block{
+		Index:        EdenChain.LastBlock.Index + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.LastBlock.Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString("Success")
+	}
+	return C.CString("Error: Block Rejected")
 }
 
 //export GetMyPeerID

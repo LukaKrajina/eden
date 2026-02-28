@@ -60,6 +60,7 @@ typedef void (*SetSteamAPIKeyFunc)(char* key);
 typedef char* (*GenerateFriendCodeFunc)();
 typedef char* (*AddFriendFunc)(char* code);
 typedef char* (*FetchFriendListFunc)();
+typedef void (*FreeStringFunc)(char* str);
 
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
 GetWalletBalanceFunc ptrGetWalletBalance = nullptr;
@@ -83,10 +84,11 @@ PlaceBetFunc ptrPlaceBet = nullptr;
 CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
-static void (*ptrFreeString)(char*) = nullptr;
+static FreeStringFunc ptrFreeString = nullptr;
 GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
 AddFriendFunc ptrAddFriend = nullptr;
 FetchFriendListFunc ptrFetchFriendList = nullptr;
+
 
 bool LoadWintun();
 void ReadFromTunLoop();
@@ -186,7 +188,7 @@ bool LoadGoDLL() {
     ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
     ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
-    ptrFreeString = (void(*)(char*))GetProcAddress(hGo, "FreeString");
+    ptrFreeString = (FreeStringFunc)GetProcAddress(hGo, "FreeString");
     ptrGenerateFriendCode = (GenerateFriendCodeFunc)GetProcAddress(hGo, "GenerateAndRegisterFriendCode");
     ptrAddFriend = (AddFriendFunc)GetProcAddress(hGo, "AddFriendByCode");
     ptrFetchFriendList = (FetchFriendListFunc)GetProcAddress(hGo, "FetchFriendList");
@@ -396,4 +398,10 @@ extern "C" __declspec(dllexport) const char* AddFriend(char* code) {
 extern "C" __declspec(dllexport) const char* GetFriends() {
     if (ptrFetchFriendList) return ptrFetchFriendList();
     return "[]";
+}
+
+extern "C" __declspec(dllexport) void FreeString(char* str) {
+    if (ptrFreeString && str) {
+        ptrFreeString(str);
+    }
 }
