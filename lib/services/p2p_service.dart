@@ -9,6 +9,9 @@ typedef StartEngineDart = void Function();
 typedef StopEngineC = Void Function();
 typedef StopEngineDart = void Function();
 
+typedef GetAuthTokenC = Pointer<Utf8> Function();
+typedef GetAuthTokenDart = Pointer<Utf8> Function();
+
 typedef ConnectToPeerC = Void Function(Pointer<Utf8> peerID);
 typedef ConnectToPeerDart = void Function(Pointer<Utf8> peerID);
 
@@ -95,6 +98,7 @@ class P2PService {
   bool _isInitialized = false;
   late StartEngineDart _startEngine;
   late StopEngineDart _stopEngine;
+  late GetAuthTokenDart _getAuthToken;
   late ConnectToPeerDart _connectToPeer;
   late GetLocalPeerIDDart _getLocalPeerID;
   late GetIPForPeerDart _getIPForPeer;
@@ -136,6 +140,7 @@ class P2PService {
   void _bindFunctions() {
     _startEngine = _lib.lookupFunction<StartEngineC, StartEngineDart>('StartEngine');
     _stopEngine = _lib.lookupFunction<StopEngineC, StopEngineDart>('StopEngine');
+    _getAuthToken = _lib.lookupFunction<GetAuthTokenC, GetAuthTokenDart>('GetAuthToken');
     _connectToPeer = _lib.lookupFunction<ConnectToPeerC, ConnectToPeerDart>('JoinBattle');
     _getLocalPeerID = _lib.lookupFunction<GetLocalPeerIDC, GetLocalPeerIDDart>('GetLocalPeerID');
     _getIPForPeer = _lib.lookupFunction<GetIPForPeerC, GetIPForPeerDart>('GetIPForPeer');
@@ -178,6 +183,11 @@ class P2PService {
 
   void stop() {
     if (_isInitialized) _stopEngine();
+  }
+
+  Future<String> getGsiToken() async {
+    if (!_isInitialized) return "Offline";
+    return _consumeNativeString(_getAuthToken());
   }
 
   void connectToPeer(String peerID) {

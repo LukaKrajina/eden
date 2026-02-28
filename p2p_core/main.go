@@ -36,8 +36,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +54,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 )
 
 var SteamAPIKey = os.Getenv("STEAM_API_KEY")
@@ -234,6 +237,7 @@ var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var sessionMutex sync.RWMutex
+var localGSIToken string
 var myPeerID string
 var myPrivKey string
 var myPubKey string
@@ -308,9 +312,44 @@ func calculateRating(kills, deaths, assist, roundKills int) float64 {
 	return rating
 }
 
+func getMachineToken() string {
+	if localGSIToken != "" {
+		return localGSIToken
+	}
+	data := []string{}
+
+	if host, err := os.Hostname(); err == nil {
+		data = append(data, host)
+	}
+
+	if interfaces, err := net.Interfaces(); err == nil {
+		for _, i := range interfaces {
+			if len(i.HardwareAddr) > 0 {
+				data = append(data, i.HardwareAddr.String())
+			}
+		}
+	}
+
+	sort.Strings(data)
+
+	rawString := strings.Join(data, "|")
+	hash := sha256.Sum256([]byte(rawString))
+	return hex.EncodeToString(hash[:16])
+}
+
 func StartGSIServer() {
+	localGSIToken = getMachineToken()
+	fmt.Printf("[GSI] Auth Token Required: %s\n\n", localGSIToken)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
+			return
+		}
+
+		clientToken := r.Header.Get("x-gsi-token")
+
+		if clientToken != localGSIToken {
+			fmt.Printf("[GSI] REJECTED: Invalid Auth Token from %s\n", r.RemoteAddr)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
@@ -689,9 +728,10 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 
 	h, err = libp2p.New(
 		libp2p.Identity(libp2pKey),
-		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
+		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/quic"),
 	)
 
 	InitializeChain("./eden_db_" + h.ID().String())
@@ -1315,8 +1355,6 @@ func FetchMyInventory(steamID *C.char) *C.char {
 		if idx, found := lookup[Key{asset.ClassID, asset.InstanceID}]; found {
 			desc := data.Descriptions[idx]
 
-			// Extract Wear (Float) - usually in descriptions or "inspect" link
-			// For WebAPI, wear is often hidden, but "Exterior" is a tag.
 			wear := "Unknown"
 			quality := "Normal"
 
@@ -1577,6 +1615,11 @@ func RegisterMySteamID(steamID *C.char) *C.char {
 		return C.CString("Success")
 	}
 	return C.CString("Error: Block Rejected")
+}
+
+//export GetGSIToken
+func GetGSIToken() *C.char {
+	return C.CString(getMachineToken())
 }
 
 //export GetMyPeerID

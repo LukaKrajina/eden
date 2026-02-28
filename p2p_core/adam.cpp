@@ -35,6 +35,7 @@ WINTUN_SESSION_HANDLE Session = NULL;
 std::atomic<bool> IsRunning(false);
 
 typedef void (*GoPacketCallback)(void* data, int len);
+typedef char* (*GetGSITokenFunc)();
 typedef char* (*SubmitGameBlockFunc)(int duration, int playerCount);
 typedef double (*GetWalletBalanceFunc)(char* address);
 typedef int (*SendTransactionFunc)(char* sender, char* receiver, double amount);
@@ -64,6 +65,7 @@ typedef char* (*UpdateMyProfileFunc)(char* avatarURL);
 typedef char* (*GetPeerProfileFunc)(char* peerID);
 typedef void (*FreeStringFunc)(char* str);
 
+GetGSITokenFunc ptrGetGSIToken = nullptr;
 SubmitGameBlockFunc ptrSubmitGameBlock = nullptr;
 GetWalletBalanceFunc ptrGetWalletBalance = nullptr;
 SendTransactionFunc ptrSendTransaction = nullptr;
@@ -169,6 +171,7 @@ bool LoadGoDLL() {
     }
 
     auto ptrInitBridge = (InitPacketBridgeFunc)GetProcAddress(hGo, "InitPacketBridge");
+    ptrGetGSIToken = (GetGSITokenFunc)GetProcAddress(hGo, "GetGSIToken");
     ptrStartEdenNode = (StartEdenNodeFunc)GetProcAddress(hGo, "StartEdenNode");
     ptrConnectToPeer = (ConnectToPeerFunc)GetProcAddress(hGo, "ConnectToPeer");
     ptrGetIPForPeer = (GetIPForPeerFunc)GetProcAddress(hGo, "GetIPForPeer");
@@ -254,6 +257,11 @@ extern "C" __declspec(dllexport) void StartEngine() {
         std::cerr << "[Error] Wintun setup failed with code: " << adapterStatus << std::endl;
         return;
     }
+}
+
+extern "C" __declspec(dllexport) const char* GetAuthToken() {
+    if (ptrGetGSIToken) return ptrGetGSIToken();
+    return "Error: Func Not Loaded";
 }
 
 extern "C" __declspec(dllexport) const char* GetIPForPeer(const char* peerID) {

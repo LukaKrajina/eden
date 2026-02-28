@@ -747,7 +747,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Future<void> _hostMatch() async {
-    if (await _configurator.setupGsi(g_CS2Path) == false) {
+    if (await _configurator.setupGsi(g_CS2Path,widget.p2pService) == false) {
       _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
       return;
     }
@@ -781,7 +781,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _createMatch() async {
     if (!_isSearching) {
-      if (await _configurator.setupGsi(g_CS2Path) == false) return;
+      if (await _configurator.setupGsi(g_CS2Path,widget.p2pService) == false) return;
       if (!_isEngineRunning) {
         _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("EnableShieldMsg"));
         return;
