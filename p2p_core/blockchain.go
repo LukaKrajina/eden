@@ -412,20 +412,32 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 			}
 
 			matchID := parts[0]
-			votedWinner := parts[1] // "CT" or "T"
+			votedWinner := parts[1]
 			votedMVP := "NONE"
 			if len(parts) > 2 {
 				votedMVP = parts[2]
-			} // "SteamID"
+			}
 
-			// Retrieve Session Info
 			session, exists := bc.MatchSessions[matchID]
 			if !exists {
 				continue
 			}
 
-			// Verify Voter Participation
+			voterProfile := bc.GetOrInitProfile(tx.Sender)
+			votingPower := 1
 			isParticipant := false
+
+			if voterProfile.Level >= 10 {
+				votingPower = 5
+			} else if voterProfile.Level >= 5 {
+				votingPower = 2
+			}
+
+			if voterProfile.Level < 2 && len(session.Roster) > 2 {
+				fmt.Printf("[Consensus] Ignoring vote from low-level account %s\n", tx.Sender)
+				continue
+			}
+
 			for _, p := range session.Roster {
 				if p == tx.Sender {
 					isParticipant = true
@@ -785,8 +797,21 @@ func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {
 	bc.Mutex.RLock()
 	lastBlock := bc.LastBlock
 	index := bc.LastBlock.Index + 1
-	bc.Mutex.RUnlock()
 
+	requiredWitnesses := int(math.Ceil(float64(proof.MaxPlayers) / 2.0))
+	if len(proof.PlayerWitness) < requiredWitnesses {
+		fmt.Printf("[Mining] REJECTED: Not enough witnesses. Have %d, Need %d\n", len(proof.PlayerWitness), requiredWitnesses)
+		bc.Mutex.RUnlock()
+		return Block{}
+	}
+
+	if proof.Duration > 5400 {
+		fmt.Println("[Mining] REJECTED: Duration too long.")
+		bc.Mutex.RUnlock()
+		return Block{}
+	}
+
+	bc.Mutex.RUnlock()
 	rewardAmount := CalculateReward(&proof)
 
 	rewardTx := Transaction{

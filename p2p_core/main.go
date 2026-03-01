@@ -30,6 +30,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -55,6 +56,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var SteamAPIKey = os.Getenv("STEAM_API_KEY")
@@ -763,6 +765,35 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	kademliaDHT, _ = dht.New(ctx, h)
 	kademliaDHT.Bootstrap(ctx)
 
+	bootstrapPeers := []string{
+		"/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+		"/ip4/104.131.131.82/udp/4001/quic/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+	}
+
+	var wg sync.WaitGroup
+	for _, peerAddr := range bootstrapPeers {
+		addr, err := multiaddr.NewMultiaddr(peerAddr)
+		if err != nil {
+			continue
+		}
+
+		peerInfo, err := peer.AddrInfoFromP2pAddr(addr)
+		if err != nil {
+			continue
+		}
+
+		wg.Add(1)
+		go func(p peer.AddrInfo) {
+			defer wg.Done()
+			if err := h.Connect(ctx, p); err != nil {
+				fmt.Printf("[P2P] Failed to connect to bootstrap %s\n", p.ID)
+			} else {
+				fmt.Printf("[P2P] Connected to Bootstrap Node: %s\n", p.ID)
+			}
+		}(*peerInfo)
+	}
+	wg.Wait()
+
 	routingDiscovery := routing.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, routingDiscovery, "eden-cs2-lobby")
 
@@ -1134,8 +1165,36 @@ func SubmitGameBlock(duration C.int, playerCount C.int) *C.char {
 }
 
 func InitializeWallet() {
+	const KeyFileName = "eden_identity.key"
+	if _, err := os.Stat(KeyFileName); err == nil {
+		fmt.Println("[Wallet] Loading existing identity...")
+		keyBytes, err := os.ReadFile(KeyFileName)
+		if err == nil {
+			savedPrivKeyHex := string(keyBytes)
+			privBytes, err := hex.DecodeString(savedPrivKeyHex)
+			if err == nil {
+				privKey, err := x509.ParseECPrivateKey(privBytes)
+				if err == nil {
+					pubBytes, _ := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+					myPrivKey = savedPrivKeyHex
+					myPubKey = hex.EncodeToString(pubBytes)
+					fmt.Printf("[Wallet] Identity Loaded. PubKey: %s...\n", myPubKey[:16])
+					return
+				}
+			}
+		}
+		fmt.Println("[Wallet] Error loading key. Backup corrupted?")
+	}
+
+	fmt.Println("[Wallet] Generating NEW Identity...")
 	myPrivKey, myPubKey = GenerateKeyPair()
-	fmt.Println("[Wallet] Generated Keys. Public:", myPubKey)
+
+	err := os.WriteFile(KeyFileName, []byte(myPrivKey), 0600)
+	if err != nil {
+		fmt.Printf("[Wallet] CRITICAL: Could not save identity to disk: %v\n", err)
+	} else {
+		fmt.Println("[Wallet] Identity saved to", KeyFileName)
+	}
 }
 
 //export GetWalletPubKey
