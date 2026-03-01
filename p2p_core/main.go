@@ -751,7 +751,7 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
 		libp2p.Transport(libp2pquic.NewTransport),
-		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/quic"),
+		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/quic-v1"),
 	)
 
 	InitializeChain("./eden_db_" + h.ID().String())
