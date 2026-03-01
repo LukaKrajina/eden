@@ -423,20 +423,7 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				continue
 			}
 
-			voterProfile := bc.GetOrInitProfile(tx.Sender)
-			votingPower := 1
 			isParticipant := false
-
-			if voterProfile.Level >= 10 {
-				votingPower = 5
-			} else if voterProfile.Level >= 5 {
-				votingPower = 2
-			}
-
-			if voterProfile.Level < 2 && len(session.Roster) > 2 {
-				fmt.Printf("[Consensus] Ignoring vote from low-level account %s\n", tx.Sender)
-				continue
-			}
 
 			for _, p := range session.Roster {
 				if p == tx.Sender {
