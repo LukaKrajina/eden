@@ -1337,9 +1337,21 @@ func SendFriendSignal(peerIDStr string, signalType string) {
 	}
 	defer s.Close()
 
+	myID := h.ID().String()
+	myName := "Unknown User"
+
+	EdenChain.Mutex.RLock()
+	if profile, exists := EdenChain.Profiles[myID]; exists {
+		myName = profile.Username
+	} else {
+		myName = GenerateFixedUsername(myID)
+	}
+	EdenChain.Mutex.RUnlock()
+
 	payload := FriendHandshake{
-		Type: signalType,
-		Name: "Unknown User", // Ideally fetch from local profile
+		Type:    signalType,
+		Name:    myName,
+		Message: "",
 	}
 
 	data, _ := json.Marshal(payload)
