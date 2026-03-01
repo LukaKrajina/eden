@@ -781,7 +781,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _createMatch() async {
     if (!_isSearching) {
-      if (await _configurator.setupGsi(g_CS2Path,widget.p2pService) == false) return;
+      if (await _configurator.setupGsi(g_CS2Path, widget.p2pService) == false) {
+        _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
+        return;
+      }
+      
       if (!_isEngineRunning) {
         _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("EnableShieldMsg"));
         return;
@@ -801,7 +805,15 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         27015
       );
       
+      String matchID = "match_${DateTime.now().millisecondsSinceEpoch}";
+      await widget.p2pService.startHostedMatch(matchID, [_myPeerID]);
       setState(() => _status = _lgpkg.get("ServerOnline"));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Server Hosted & Announced! Match ID: $matchID"),
+          backgroundColor: Colors.green,
+        )
+      );
     }
   }
 
