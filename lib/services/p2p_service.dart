@@ -6,6 +6,9 @@ import 'package:ffi/ffi.dart';
 typedef StartEngineC = Void Function();
 typedef StartEngineDart = void Function();
 
+typedef StartNetworkMatchC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList);
+typedef StartNetworkMatchDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList);
+
 typedef StopEngineC = Void Function();
 typedef StopEngineDart = void Function();
 
@@ -100,6 +103,7 @@ class P2PService {
   late DynamicLibrary _lib;
   bool _isInitialized = false;
   late StartEngineDart _startEngine;
+  late StartNetworkMatchDart _startNetworkMatch;
   late StopEngineDart _stopEngine;
   late GetAuthTokenDart _getAuthToken;
   late ConnectToPeerDart _connectToPeer;
@@ -143,6 +147,7 @@ class P2PService {
 
   void _bindFunctions() {
     _startEngine = _lib.lookupFunction<StartEngineC, StartEngineDart>('StartEngine');
+    _startNetworkMatch = _lib.lookupFunction<StartNetworkMatchC, StartNetworkMatchDart>('StartNetworkMatch');
     _stopEngine = _lib.lookupFunction<StopEngineC, StopEngineDart>('StopEngine');
     _getAuthToken = _lib.lookupFunction<GetAuthTokenC, GetAuthTokenDart>('GetAuthToken');
     _connectToPeer = _lib.lookupFunction<ConnectToPeerC, ConnectToPeerDart>('JoinBattle');
@@ -248,6 +253,18 @@ class P2PService {
   Future<String> findMatch() async {
     if (!_isInitialized) return "Error: Engine Not Loaded";
     return _consumeNativeString(_findMatch());
+  }
+
+  Future<String> startHostedMatch(String matchID, List<String> players) async {
+    if (!_isInitialized) return "Offline";
+    final mPtr = matchID.toNativeUtf8();
+    final pPtr = players.join(",").toNativeUtf8();
+    try {
+      return _consumeNativeString(_startNetworkMatch(mPtr, pPtr));
+    } finally {
+      calloc.free(mPtr);
+      calloc.free(pPtr);
+    }
   }
 
   Future<String> submitMatchReward(int duration, int playerCount) async {
