@@ -1016,115 +1016,198 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     );
   }
 
+  Future<void> _handleFriendRequest(String peerID, bool accept) async {
+    String res = await widget.p2pService.respondToFriendRequest(peerID, accept);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(res),
+        backgroundColor: accept ? Colors.green : Colors.red,
+      ));
+      
+      var updatedList = await widget.p2pService.getFriendList();
+      setState(() => _friends = updatedList);
+    }
+  }
+
 Widget _buildFriendList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(_lgpkg.get("FriendsList"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+            icon: const Icon(Icons.person_add),
+            label: Text(_lgpkg.get("AddFriend")),
+            onPressed: _addFriend,
+          )
+        ],
+      ),
+      const SizedBox(height: 20),
+      Expanded(
+        child: _friends.isEmpty 
+        ? Center(child: Text(_lgpkg.get("NoFriendsMsg"), style: const TextStyle(color: kFaceitTextDim)))
+        : ListView.builder(
+            itemCount: _friends.length,
+            itemBuilder: (ctx, i) {
+              final friendData = _friends[i];
+              String status = friendData['status'] ?? "Confirmed";
+              bool isOnline = friendData['is_online'] ?? false;
+              final friend = Friend(
+                name: friendData['name'] ?? "Unknown Peer", 
+                peerID: friendData['peer_id'] ?? "",
+                level: "1", 
+                skillScore: 1000, 
+                edn: 0.0 
+              );
+
+              if (status == "Pending_Received") {
+                return _buildIncomingRequestCard(friend);
+              } else if (status == "Pending_Sent") {
+                return _buildSentRequestCard(friend);
+              } else {
+                return _buildConfirmedFriendCard(friend, isOnline);
+              }
+            },
+          ),
+      ),
+    ],
+  );
+}
+
+  Widget _buildIncomingRequestCard(Friend friend) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kFaceitSurface,
+        border: Border.all(color: kFaceitOrange.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(radius: 24, backgroundColor: Colors.grey, child: Icon(Icons.person_add, color: Colors.white)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(friend.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text("Incoming Friend Request", style: TextStyle(color: kFaceitOrange, fontSize: 12, fontStyle: FontStyle.italic)),
+            ],
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.red),
+            onPressed: () => _handleFriendRequest(friend.peerID, false),
+            tooltip: "Decline",
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            icon: const Icon(Icons.check, size: 16),
+            label: const Text("ACCEPT"),
+            onPressed: () => _handleFriendRequest(friend.peerID, true), 
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSentRequestCard(Friend friend) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kFaceitSurface.withOpacity(0.5),
+        border: Border.all(color: kFaceitBorder),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(radius: 24, backgroundColor: Colors.black45, child: Icon(Icons.access_time, color: Colors.grey)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(friend.name, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text("Request Sent - Waiting...", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+          const Spacer(),
+          const Text("PENDING", style: TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfirmedFriendCard(Friend friend, bool isOnline) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: kFaceitSurface,
+      border: Border.all(color: kFaceitBorder),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Row(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Stack(
           children: [
-            Text(_lgpkg.get("FriendsList"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
-              icon: const Icon(Icons.person_add),
-              label: Text(_lgpkg.get("AddFriend")),
-              onPressed: _addFriend,
+            CircleAvatar(radius: 24, backgroundColor: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white)),
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                width: 12, height: 12,
+                decoration: BoxDecoration(
+                  color: isOnline ? Colors.greenAccent : Colors.grey,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: kFaceitSurface, width: 2)
+                ),
+              ),
             )
           ],
         ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: _friends.isEmpty 
-          ? Center(child: Text(_lgpkg.get("NoFriendsMsg"), style: const TextStyle(color: kFaceitTextDim)))
-          : ListView.builder(
-              itemCount: _friends.length,
-              itemBuilder: (ctx, i) {
-                final friendData = _friends[i];
-                
-                // Construct a Friend object on the fly for compatibility with existing methods
-                // Note: The backend 'FriendInfo' currently provides name/peerID/online status.
-                // We default Level/Skill/EDN until those are added to the protocol.
-                final friend = Friend(
-                  name: friendData['name'] ?? "Unknown Peer", 
-                  peerID: friendData['peer_id'] ?? "",
-                  level: "1", // Placeholder
-                  skillScore: 1000, // Placeholder
-                  edn: 0.0 // Placeholder
-                );
-                
-                bool isOnline = friendData['is_online'] ?? false;
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: kFaceitSurface,
-                    border: Border.all(color: kFaceitBorder),
-                    borderRadius: BorderRadius.circular(4),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(friend.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                if (isOnline) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
+                    child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
-                  child: Row(
-                    children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(radius: 24, backgroundColor: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white)),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 12, height: 12,
-                              decoration: BoxDecoration(
-                                color: isOnline ? Colors.greenAccent : Colors.grey,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: kFaceitSurface, width: 2)
-                              ),
-                            ),
-                          )
-                        ],
-                      ),
-                      const SizedBox(width: 16),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(friend.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              if (isOnline) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
-                                  child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                                ),
-                                const SizedBox(width: 8),
-                                Text("${_lgpkg.get("Skill")}: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                              ] else 
-                                const Text("Offline", style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)),
-                            ],
-                          )
-                        ],
-                      ),
-                      const Spacer(),
-                      
-                      OutlinedButton(
-                        onPressed: isOnline ? () => _inviteFriend(friend) : null, // Disable invite if offline
-                        child: Text(_lgpkg.get("Invite")),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: isOnline ? Colors.green[700] : Colors.grey[800]),
-                        onPressed: isOnline ? () => _openTradeInterface(friend) : null,
-                        child: Text(_lgpkg.get("Trade")),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                  const SizedBox(width: 8),
+                  Text("${_lgpkg.get("Skill")}: ${friend.skillScore}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ] else 
+                  const Text("Offline", style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)),
+              ],
+            )
+          ],
+        ),
+        const Spacer(),
+        OutlinedButton(
+          onPressed: isOnline ? () => _inviteFriend(friend) : null,
+          child: Text(_lgpkg.get("Invite")),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: isOnline ? Colors.green[700] : Colors.grey[800]),
+          onPressed: isOnline ? () => _openTradeInterface(friend) : null,
+          child: Text(_lgpkg.get("Trade")),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildMatchLobby() {
     return Column(
