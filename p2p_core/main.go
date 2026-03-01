@@ -1841,6 +1841,37 @@ func AutoConnectToPeers() *C.char {
 	return C.CString("No peers found")
 }
 
+//export ConnectToPeer
+func ConnectToPeer(peerID *C.char) {
+	if h == nil {
+		return
+	}
+	pIDStr := C.GoString(peerID)
+	targetID, err := peer.Decode(pIDStr)
+	if err != nil {
+		return
+	}
+
+	peerInfo, err := kademliaDHT.FindPeer(ctx, targetID)
+	if err != nil {
+		return
+	}
+
+	h.Connect(ctx, peerInfo)
+}
+
+//export IsPeerAlive
+func IsPeerAlive() C.int {
+	if h == nil {
+		return 0
+	}
+
+	if len(h.Network().Peers()) > 0 {
+		return 1
+	}
+	return 0
+}
+
 //export GetIPForPeer
 func GetIPForPeer(peerIDStr *C.char) *C.char {
 	return C.CString(getIPFromPeerID(C.GoString(peerIDStr)))

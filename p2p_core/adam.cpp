@@ -58,6 +58,7 @@ typedef char* (*PlaceBetFunc)(char* matchID, char* team, double amount);
 typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
 typedef void (*SetSteamAPIKeyFunc)(char* key);
+typedef char* (*RegisterSteamIDFunc)(char* steamID);
 typedef char* (*GenerateFriendCodeFunc)();
 typedef char* (*RespondToFriendRequestFunc)(char* peerID, int accept);
 typedef char* (*AddFriendFunc)(char* code);
@@ -90,6 +91,7 @@ CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
+RegisterSteamIDFunc ptrRegisterSteamID = nullptr;
 GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
 static RespondToFriendRequestFunc ptrRespondToFriendRequest = nullptr;
 AddFriendFunc ptrAddFriend = nullptr;
@@ -196,6 +198,7 @@ bool LoadGoDLL() {
     ptrCreateEscrow = (CreateEscrowFunc)GetProcAddress(hGo, "CreateEscrow");
     ptrVerifyTrade = (VerifyTradeFunc)GetProcAddress(hGo, "VerifySteamTrade");
     ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
+    ptrRegisterSteamID = (RegisterSteamIDFunc)GetProcAddress(hGo, "RegisterMySteamID");
     ptrFreeString = (FreeStringFunc)GetProcAddress(hGo, "FreeString");
     ptrGenerateFriendCode = (GenerateFriendCodeFunc)GetProcAddress(hGo, "GenerateAndRegisterFriendCode");
     ptrRespondToFriendRequest = (RespondToFriendRequestFunc)GetProcAddress(hGo, "RespondToFriendRequest");
@@ -399,6 +402,11 @@ extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, ch
 extern "C" __declspec(dllexport) const char* GetMyPublicKey() {
     if (ptrGetWalletPubKey) return ptrGetWalletPubKey();
     return "";
+}
+
+extern "C" __declspec(dllexport) const char* RegisterMySteamID(char* steamID) {
+    if (ptrRegisterSteamID) return ptrRegisterSteamID(steamID);
+    return "Error: Function Not Loaded";
 }
 
 extern "C" __declspec(dllexport) const char* RegisterAndGetFriendCode() {
