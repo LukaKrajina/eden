@@ -107,6 +107,8 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
+extern char* UpdateMyProfile(char* username, char* avatarURL);
+extern char* GetPeerProfile(char* peerID);
 extern char* GenerateAndRegisterFriendCode(void);
 extern char* AddFriendByCode(char* code);
 extern char* FetchFriendList(void);
@@ -128,8 +130,13 @@ extern void SetSteamAPIKey(char* key);
 extern char* FetchMyInventory(char* steamID);
 extern void InitPacketBridge(InjectVPNPacketFn fn);
 extern void HandleOutboundPacket(void* data, int len);
+extern char* RegisterMySteamID(char* steamID);
+extern char* GetGSIToken(void);
 extern char* GetMyPeerID(void);
+extern char* RespondToFriendRequest(char* peerID, int accept);
 extern char* AutoConnectToPeers(void);
+extern void ConnectToPeer(char* peerID);
+extern int IsPeerAlive(void);
 extern char* GetIPForPeer(char* peerIDStr);
 extern void FreeString(char* str);
 
