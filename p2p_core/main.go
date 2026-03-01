@@ -257,8 +257,11 @@ var activeSession *LiveMatchSession
 var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
 
 //export UpdateMyProfile
-func UpdateMyProfile(avatarURL *C.char) *C.char {
+func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
+	user := C.GoString(username)
 	url := C.GoString(avatarURL)
+
+	payload := fmt.Sprintf("%s|%s", user, url)
 
 	tx := Transaction{
 		ID:        fmt.Sprintf("prof_%d", time.Now().UnixNano()),
@@ -266,7 +269,7 @@ func UpdateMyProfile(avatarURL *C.char) *C.char {
 		Sender:    h.ID().String(),
 		Receiver:  "IDENTITY_CONTRACT",
 		Amount:    0,
-		Payload:   url,
+		Payload:   payload,
 		Timestamp: time.Now().Unix(),
 	}
 

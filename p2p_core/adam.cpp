@@ -62,7 +62,7 @@ typedef char* (*GenerateFriendCodeFunc)();
 typedef char* (*RespondToFriendRequestFunc)(char* peerID, int accept);
 typedef char* (*AddFriendFunc)(char* code);
 typedef char* (*FetchFriendListFunc)();
-typedef char* (*UpdateMyProfileFunc)(char* avatarURL);
+typedef char* (*UpdateMyProfileFunc)(char* username, char* avatarURL);
 typedef char* (*GetPeerProfileFunc)(char* peerID);
 typedef void (*FreeStringFunc)(char* str);
 
@@ -423,8 +423,10 @@ extern "C" __declspec(dllexport) const char* GetFriends() {
     return "[]";
 }
 
-extern "C" __declspec(dllexport) const char* UpdateProfile(char* avatarURL) {
-    if (ptrUpdateMyProfile) return ptrUpdateMyProfile(avatarURL);
+extern "C" __declspec(dllexport) const char* UpdateProfile(char* username, char* avatarURL) {
+    if (ptrUpdateMyProfile) {
+        return ptrUpdateMyProfile(username, avatarURL);
+    }
     return "Error: Function Not Loaded";
 }
 

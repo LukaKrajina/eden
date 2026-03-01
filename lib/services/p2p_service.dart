@@ -75,8 +75,8 @@ typedef GetFriendsDart = Pointer<Utf8> Function();
 typedef RegisterSteamIDC = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 typedef RegisterSteamIDDart = Pointer<Utf8> Function(Pointer<Utf8> steamID);
 
-typedef UpdateProfileC = Pointer<Utf8> Function(Pointer<Utf8> url);
-typedef UpdateProfileDart = Pointer<Utf8> Function(Pointer<Utf8> url);
+typedef UpdateProfileC = Pointer<Utf8> Function(Pointer<Utf8> username, Pointer<Utf8> url);
+typedef UpdateProfileDart = Pointer<Utf8> Function(Pointer<Utf8> username, Pointer<Utf8> url);
 
 typedef GetPeerProfileC = Pointer<Utf8> Function(Pointer<Utf8> id);
 typedef GetPeerProfileDart = Pointer<Utf8> Function(Pointer<Utf8> id);
@@ -420,13 +420,15 @@ class P2PService {
     }
   }
 
-  Future<String> updateMyProfile(String avatarURL) async {
+  Future<String> updateMyProfile(String username, String avatarURL) async {
     if (!_isInitialized) return "Offline";
-    final ptr = avatarURL.toNativeUtf8();
+    final uPtr = username.toNativeUtf8();
+    final aPtr = avatarURL.toNativeUtf8();
     try {
-      return _consumeNativeString(_updateProfile(ptr));
+      return _consumeNativeString(_updateProfile(uPtr, aPtr));
     } finally {
-      calloc.free(ptr);
+      calloc.free(uPtr);
+      calloc.free(aPtr);
     }
   }
 

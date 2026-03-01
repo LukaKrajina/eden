@@ -345,9 +345,15 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 
 		case TxTypeUpdateProfile:
 			if tx.Payload != "" {
+				parts := strings.Split(tx.Payload, "|")
 				profile := bc.GetOrInitProfile(tx.Sender)
-				profile.AvatarURL = tx.Payload
-				profile.Username = tx.Payload
+
+				if len(parts) >= 2 {
+					profile.Username = parts[0]
+					profile.AvatarURL = parts[1]
+				} else {
+					profile.AvatarURL = parts[0]
+				}
 			}
 
 		case TxTypeMatchResult:
