@@ -62,11 +62,13 @@ var SteamAPIKey = os.Getenv("STEAM_API_KEY")
 const GSI_PORT = "127.0.0.1:3000"
 const MaxPayloadSize = 2048
 const (
-	FrameGame      = 0x01
-	FrameHeartbeat = 0x02
-	ProtocolID     = "/eden-cs2/1.0.0"
-	SyncProtocolID = "/eden/sync/1.0.0"
-	TopicName      = "eden-consensus-v1"
+	FrameGame        = 0x01
+	FrameHeartbeat   = 0x02
+	ProtocolID       = "/eden-cs2/1.0.0"
+	SyncProtocolID   = "/eden/sync/1.0.0"
+	FriendProtocolID = "/eden/friend/1.0.0"
+	FriendsDBFile    = "friends.json"
+	TopicName        = "eden-consensus-v1"
 )
 
 var (
@@ -160,6 +162,13 @@ type FriendInfo struct {
 	FriendCode string `json:"friend_code"`
 	IsOnline   bool   `json:"is_online"`
 	LastSeen   int64  `json:"last_seen"`
+	Status     string `json:"status"`
+}
+
+type FriendHandshake struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Message string `json:"message"`
 }
 
 type SyncRequest struct {
@@ -238,6 +247,7 @@ var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var sessionMutex sync.RWMutex
 var localGSIToken string
+var friendStorePath string
 var myPeerID string
 var myPrivKey string
 var myPubKey string
@@ -627,12 +637,17 @@ func AddFriendByCode(code *C.char) *C.char {
 
 	friendMutex.Lock()
 	MyFriends[peerID] = FriendInfo{
-		Name:       "Unknown Peer",
+		Name:       "Pending Peer",
 		PeerID:     peerID,
 		FriendCode: cStr,
 		IsOnline:   false,
+		Status:     "Pending_Sent",
 	}
 	friendMutex.Unlock()
+
+	SaveFriends()
+
+	go SendFriendSignal(peerID, "REQUEST")
 
 	return C.CString("Success: " + peerID)
 }
@@ -750,6 +765,10 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 
 	setupPubSub()
 
+	LoadFriends()
+
+	h.SetStreamHandler(FriendProtocolID, HandleFriendStream)
+
 	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
 		fmt.Println("[P2P] Incoming Game Connection")
 		streamLock.Lock()
@@ -764,6 +783,52 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	fmt.Printf("[Eden] Node Started. ID: %s\n", h.ID().String())
 
 	return C.CString(getIPFromPeerID(h.ID().String()))
+}
+
+func HandleFriendStream(s network.Stream) {
+	defer s.Close()
+
+	buf, err := readFrame(s)
+	if err != nil {
+		return
+	}
+
+	var msg FriendHandshake
+	json.Unmarshal(buf, &msg)
+	remotePID := s.Conn().RemotePeer().String()
+
+	friendMutex.Lock()
+	entry, exists := MyFriends[remotePID]
+
+	switch msg.Type {
+	case "REQUEST":
+		if !exists {
+			MyFriends[remotePID] = FriendInfo{
+				Name:     msg.Name,
+				PeerID:   remotePID,
+				Status:   "Pending_Received",
+				LastSeen: time.Now().Unix(),
+			}
+			fmt.Printf("[Friends] Received Request from %s\n", msg.Name)
+		}
+
+	case "ACCEPT":
+		if exists {
+			entry.Status = "Confirmed"
+			entry.Name = msg.Name
+			MyFriends[remotePID] = entry
+			fmt.Printf("[Friends] Friend %s Confirmed!\n", msg.Name)
+		}
+
+	case "REJECT":
+		if exists {
+			delete(MyFriends, remotePID)
+			fmt.Printf("[Friends] Request to %s was rejected.\n", msg.Name)
+		}
+	}
+	friendMutex.Unlock()
+
+	SaveFriends()
 }
 
 func HandleSyncRequest(s network.Stream) {
@@ -1252,6 +1317,35 @@ func SendTransaction(receiver *C.char, amount C.double) C.int {
 	return 0
 }
 
+func SendFriendSignal(peerIDStr string, signalType string) {
+	pID, err := peer.Decode(peerIDStr)
+	if err != nil {
+		return
+	}
+
+	if h.Network().Connectedness(pID) != network.Connected {
+		peerInfo, err := kademliaDHT.FindPeer(ctx, pID)
+		if err == nil {
+			h.Connect(ctx, peerInfo)
+		}
+	}
+
+	s, err := h.NewStream(ctx, pID, FriendProtocolID)
+	if err != nil {
+		fmt.Printf("[Friends] Failed to open stream to %s\n", peerIDStr)
+		return
+	}
+	defer s.Close()
+
+	payload := FriendHandshake{
+		Type: signalType,
+		Name: "Unknown User", // Ideally fetch from local profile
+	}
+
+	data, _ := json.Marshal(payload)
+	writeFrame(s, data)
+}
+
 //export CreateEscrow
 func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 	tx := Transaction{
@@ -1381,6 +1475,52 @@ func FetchMyInventory(steamID *C.char) *C.char {
 
 	jsonData, _ := json.Marshal(richItems)
 	return C.CString(string(jsonData))
+}
+
+func getFriendFilePath() string {
+	if friendStorePath != "" {
+		return friendStorePath
+	}
+	return fmt.Sprintf("friends_%s.json", h.ID().String())
+}
+
+func SaveFriends() {
+	friendMutex.Lock()
+	defer friendMutex.Unlock()
+
+	data, err := json.MarshalIndent(MyFriends, "", "  ")
+	if err != nil {
+		fmt.Printf("[Friends] Error marshalling data: %v\n", err)
+		return
+	}
+
+	err = os.WriteFile(getFriendFilePath(), data, 0644)
+	if err != nil {
+		fmt.Printf("[Friends] Error saving to disk: %v\n", err)
+	}
+}
+
+func LoadFriends() {
+	friendMutex.Lock()
+	defer friendMutex.Unlock()
+
+	path := getFriendFilePath()
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("[Friends] Error reading file: %v\n", err)
+		return
+	}
+
+	err = json.Unmarshal(data, &MyFriends)
+	if err != nil {
+		fmt.Printf("[Friends] Error parsing file: %v\n", err)
+	} else {
+		fmt.Printf("[Friends] Loaded %d friends from disk.\n", len(MyFriends))
+	}
 }
 
 //export InitPacketBridge
@@ -1625,6 +1765,36 @@ func GetGSIToken() *C.char {
 //export GetMyPeerID
 func GetMyPeerID() *C.char {
 	return C.CString(myPeerID)
+}
+
+//export RespondToFriendRequest
+func RespondToFriendRequest(peerID *C.char, accept C.int) *C.char {
+	pIDStr := C.GoString(peerID)
+	isAccepting := int(accept) == 1
+	friendMutex.Lock()
+	entry, exists := MyFriends[pIDStr]
+	friendMutex.Unlock()
+
+	if !exists {
+		return C.CString("Error: Friend request not found")
+	}
+
+	if isAccepting {
+		friendMutex.Lock()
+		entry.Status = "Confirmed"
+		MyFriends[pIDStr] = entry
+		friendMutex.Unlock()
+		SaveFriends()
+		go SendFriendSignal(pIDStr, "ACCEPT")
+		return C.CString("Success: Friend Accepted")
+	} else {
+		friendMutex.Lock()
+		delete(MyFriends, pIDStr)
+		friendMutex.Unlock()
+		SaveFriends()
+		go SendFriendSignal(pIDStr, "REJECT")
+		return C.CString("Success: Request Rejected")
+	}
 }
 
 //export AutoConnectToPeers

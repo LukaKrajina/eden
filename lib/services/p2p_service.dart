@@ -84,6 +84,9 @@ typedef GetPeerProfileDart = Pointer<Utf8> Function(Pointer<Utf8> id);
 typedef FreeStringC = Void Function(Pointer<Utf8> str);
 typedef FreeStringDart = void Function(Pointer<Utf8> str);
 
+typedef RespondToRequestC = Pointer<Utf8> Function(Pointer<Utf8> peerID, Int32 accept);
+typedef RespondToRequestDart = Pointer<Utf8> Function(Pointer<Utf8> peerID, int accept);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -117,6 +120,7 @@ class P2PService {
   late SetSteamAPIKeyDart _setSteamAPIKey;
   late GetSteamInventoryDart _getSteamInventory;
   late RegisterFriendDart _registerFriend;
+  late RespondToRequestDart _respondToRequest;
   late AddFriendDart _addFriend;
   late GetFriendsDart _getFriends;
   late RegisterSteamIDDart _registerSteamID;
@@ -159,6 +163,7 @@ class P2PService {
     _setSteamAPIKey = _lib.lookupFunction<SetSteamAPIKeyC, SetSteamAPIKeyDart>('UpdateSteamAPIKey');
     _getSteamInventory = _lib.lookupFunction<GetSteamInventoryC, GetSteamInventoryDart>('GetSteamInventory');
     _registerFriend = _lib.lookupFunction<RegisterFriendC, RegisterFriendDart>('RegisterAndGetFriendCode');
+    _respondToRequest = _lib.lookupFunction<RespondToRequestC, RespondToRequestDart>('RespondToRequest');
     _addFriend = _lib.lookupFunction<AddFriendC, AddFriendDart>('AddFriend');
     _getFriends = _lib.lookupFunction<GetFriendsC, GetFriendsDart>('GetFriends');
     _registerSteamID = _lib.lookupFunction<RegisterSteamIDC, RegisterSteamIDDart>('RegisterMySteamID');
@@ -378,6 +383,17 @@ class P2PService {
     final ptr = code.toNativeUtf8();
     try {
       return _consumeNativeString(_addFriend(ptr));
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<String> respondToFriendRequest(String peerID, bool accept) async {
+    if (!_isInitialized) return "Offline";
+    
+    final ptr = peerID.toNativeUtf8();
+    try {
+      return _consumeNativeString(_respondToRequest(ptr, accept ? 1 : 0));
     } finally {
       calloc.free(ptr);
     }

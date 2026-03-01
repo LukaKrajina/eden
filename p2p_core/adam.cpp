@@ -59,6 +59,7 @@ typedef char* (*CreateEscrowFunc)(char* sellerID, char* assetID, double price);
 typedef int (*VerifyTradeFunc)(char* tradeID, char* assetID);
 typedef void (*SetSteamAPIKeyFunc)(char* key);
 typedef char* (*GenerateFriendCodeFunc)();
+typedef char* (*RespondToFriendRequestFunc)(char* peerID, int accept);
 typedef char* (*AddFriendFunc)(char* code);
 typedef char* (*FetchFriendListFunc)();
 typedef char* (*UpdateMyProfileFunc)(char* avatarURL);
@@ -90,6 +91,7 @@ VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
+static RespondToFriendRequestFunc ptrRespondToFriendRequest = nullptr;
 AddFriendFunc ptrAddFriend = nullptr;
 FetchFriendListFunc ptrFetchFriendList = nullptr;
 UpdateMyProfileFunc ptrUpdateMyProfile = nullptr;
@@ -196,6 +198,7 @@ bool LoadGoDLL() {
     ptrSetSteamAPIKey = (SetSteamAPIKeyFunc)GetProcAddress(hGo, "SetSteamAPIKey");
     ptrFreeString = (FreeStringFunc)GetProcAddress(hGo, "FreeString");
     ptrGenerateFriendCode = (GenerateFriendCodeFunc)GetProcAddress(hGo, "GenerateAndRegisterFriendCode");
+    ptrRespondToFriendRequest = (RespondToFriendRequestFunc)GetProcAddress(hGo, "RespondToFriendRequest");
     ptrAddFriend = (AddFriendFunc)GetProcAddress(hGo, "AddFriendByCode");
     ptrFetchFriendList = (FetchFriendListFunc)GetProcAddress(hGo, "FetchFriendList");
     ptrUpdateMyProfile = (UpdateMyProfileFunc)GetProcAddress(hGo, "UpdateMyProfile");
@@ -401,6 +404,13 @@ extern "C" __declspec(dllexport) const char* GetMyPublicKey() {
 extern "C" __declspec(dllexport) const char* RegisterAndGetFriendCode() {
     if (ptrGenerateFriendCode) return ptrGenerateFriendCode();
     return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* RespondToRequest(char* peerID, bool accept) {
+    if (ptrRespondToFriendRequest) {
+        return ptrRespondToFriendRequest(peerID, accept ? 1 : 0);
+    }
+    return "Error: Function Not Loaded";
 }
 
 extern "C" __declspec(dllexport) const char* AddFriend(char* code) {
