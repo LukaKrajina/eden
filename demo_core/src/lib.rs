@@ -132,7 +132,9 @@ impl MatchCollector {
             return p.team_num;
         }
         
-        if let Ok(entity) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
+        let entity_idx = (userid & 0x7FF) as i32;
+
+        if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
              if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
                  return *t;
              }
@@ -146,7 +148,9 @@ impl MatchCollector {
             let mut steam_id = "BOT".to_string();
             let mut team_num = 0;
 
-            if let Ok(entity) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
+            let entity_idx = (userid & 0x7FF) as i32;
+
+            if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
                 
                 let class = entity.class();
                 let class_name = class.name();
@@ -216,19 +220,13 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     )?;
     let match_id: i32 = row.get(0);
 
-    // Prevent Division by Zero (if scores are 0-0, assume at least 1 round context or skip ADR)
     let total_rounds = (collector.score_ct + collector.score_t).max(1) as f32;
 
     for stats in collector.players.values() {
 
-        // STRICT IDENTITY FILTERING
-        // 1. Skip the World Entity (65535)
-        // 2. Skip uninitialized bots if they have no stats
         if stats.steam_id.contains("65535") || stats.name.contains("User 65535") { continue; }
         if stats.steam_id == "BOT" && stats.kills == 0 && stats.deaths == 0 { continue; }
         
-        // ADR CALCULATION & SANITIZATION
-        // Ensure strictly positive floating point results
         let adr_raw = stats.total_damage as f32 / total_rounds;
         let adr = if adr_raw < 0.0 { 0.0 } else { adr_raw };
         
