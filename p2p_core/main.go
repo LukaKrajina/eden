@@ -1088,6 +1088,11 @@ func StartMatch(matchID *C.char, playerList *C.char) *C.char {
 
 	fmt.Printf("[Lobby] Initializing Match %s with Roster: %s\n", mID, roster)
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("init_%s_%d", mID, time.Now().UnixNano()),
 		Type:      "MATCH_START",
@@ -1096,6 +1101,7 @@ func StartMatch(matchID *C.char, playerList *C.char) *C.char {
 		Amount:    0,
 		Payload:   fmt.Sprintf("%s|%s", mID, roster),
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	if !strings.Contains(roster, h.ID().String()) {
