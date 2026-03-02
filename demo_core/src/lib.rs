@@ -78,24 +78,23 @@ impl MatchCollector {
                 let attacker_id = extract_id(event.get_value("attacker").ok());
                 let assister_id = extract_id(event.get_value("assister").ok());
 
-                if attacker_id == WORLD_ENT_ID || victim_id == WORLD_ENT_ID {
-                    return Ok(());
-                }
+                if victim_id == WORLD_ENT_ID { return Ok(()); }
+                let attacker_team = self.get_current_team(ctx, attacker_id);
+                let victim_team = self.get_current_team(ctx, victim_id);
 
-                let attacker_team = self.get_player_team(ctx, attacker_id);
-                let victim_team = self.get_player_team(ctx, victim_id);
-
-                if attacker_id != 0 && attacker_id != victim_id && attacker_team != victim_team {
+                if attacker_id != 0 && attacker_id != WORLD_ENT_ID && attacker_id != victim_id && attacker_team != victim_team {
                     let p = self.get_player(ctx, attacker_id);
                     p.kills += 1;
+                    p.team_num = attacker_team; 
                 }
                 
                 if victim_id != 0 {
                     let p = self.get_player(ctx, victim_id);
                     p.deaths += 1;
+                    p.team_num = victim_team;
                 }
                 
-                if assister_id != 0 && assister_id != attacker_id && assister_id != WORLD_ENT_ID {
+                if assister_id != 0 && assister_id != attacker_id && assister_id != WORLD_ENT_ID && assister_id != victim_id {
                     let p = self.get_player(ctx, assister_id);
                     p.assists += 1;
                 }
@@ -136,6 +135,28 @@ impl MatchCollector {
         Ok(())
     }
 
+    fn get_current_team(&self, ctx: &Context, userid: u64) -> i32 {
+        if userid == 0 || userid == WORLD_ENT_ID { return 0; }
+        
+        let entity_idx = (userid & 0x3FFF) as i32;
+        if entity_idx > 16384 { return 0; }
+
+        if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
+             if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
+                 return *t;
+             }
+             if let Ok(FieldValue::Unsigned64(handle)) = entity.get_property_by_name("m_hController") {
+                 let controller_idx = (handle & 0x3FFF) as i32;
+                 if let Ok(controller) = ctx.entities().get_by_class_id(controller_idx) {
+                     if let Ok(FieldValue::Signed32(t)) = controller.get_property_by_name("m_iTeamNum") {
+                         return *t;
+                     }
+                 }
+             }
+        }
+        0
+    }
+
     fn get_player_team(&self, ctx: &Context, userid: u64) -> i32 {
         if let Some(p) = self.players.get(&userid) {
             return p.team_num;
@@ -159,41 +180,43 @@ impl MatchCollector {
 
             let entity_idx = (userid & 0x3FFF) as i32;
 
-            if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
-                
-                let class = entity.class();
-                let class_name = class.name();
+            if entity_idx < 16384 {
+                if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
+                    let class = entity.class();
+                    let class_name = class.name();
 
-                if class_name == "CCSPlayerController" {
-                    if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_sSanitizedPlayerName") {
-                        name = n.to_string();
-                    } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
-                        name = n.to_string();
-                    } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_szName") {
-                        name = n.to_string();
-                    }
-
-                    if let Ok(field_val) = entity.get_property_by_name("m_steamID") {
-                        match field_val {
-                            FieldValue::Unsigned64(s) => steam_id = s.to_string(),
-                            FieldValue::Signed32(s) => steam_id = s.to_string(),
-                            _ => {}
+                    if class_name == "CCSPlayerController" {
+                        if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_sSanitizedPlayerName") {
+                            name = n.to_string();
+                        } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
+                            name = n.to_string();
                         }
-                    }
 
-                    if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
-                        team_num = *t;
-                    }
-                } 
-                else if class_name == "CCSPlayerPawn" {
-                    if let Ok(FieldValue::Unsigned64(handle)) = entity.get_property_by_name("m_hController") {
-                        let controller_idx = handle & 0x7FF;
-                        if let Ok(controller) = ctx.entities().get_by_class_id(controller_idx as i32) {
-                            if let Ok(FieldValue::String(n)) = controller.get_property_by_name("m_sSanitizedPlayerName") {
-                                name = n.to_string();
+                        if let Ok(field_val) = entity.get_property_by_name("m_steamID") {
+                            match field_val {
+                                FieldValue::Unsigned64(s) => steam_id = s.to_string(),
+                                FieldValue::Signed32(s) => steam_id = s.to_string(),
+                                _ => {}
                             }
-                            if let Ok(FieldValue::Unsigned64(s)) = controller.get_property_by_name("m_steamID") {
-                                steam_id = s.to_string();
+                        }
+
+                        if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
+                            team_num = *t;
+                        }
+                    } 
+                    else if class_name == "CCSPlayerPawn" {
+                        if let Ok(FieldValue::Unsigned64(handle)) = entity.get_property_by_name("m_hController") {
+                            let controller_idx = (handle & 0x3FFF) as i32;
+                            if let Ok(controller) = ctx.entities().get_by_class_id(controller_idx) {
+                                if let Ok(FieldValue::String(n)) = controller.get_property_by_name("m_sSanitizedPlayerName") {
+                                    name = n.to_string();
+                                }
+                                if let Ok(FieldValue::Unsigned64(s)) = controller.get_property_by_name("m_steamID") {
+                                    steam_id = s.to_string();
+                                }
+                                if let Ok(FieldValue::Signed32(t)) = controller.get_property_by_name("m_iTeamNum") {
+                                    team_num = *t;
+                                }
                             }
                         }
                     }
@@ -242,10 +265,9 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     let total_rounds = (collector.score_ct + collector.score_t).max(1) as f32;
 
     for stats in collector.players.values() {
-
-        if stats.steam_id.contains("65535") || stats.name.contains("User 65535") { continue; }
         if stats.steam_id == "BOT" && stats.kills == 0 && stats.deaths == 0 { continue; }
-        
+        if stats.name.contains("User") && stats.kills == 0 && stats.deaths == 0 { continue; }
+
         let adr_raw = stats.total_damage as f32 / total_rounds;
         let adr = if adr_raw < 0.0 { 0.0 } else { adr_raw };
         

@@ -16,10 +16,10 @@ import 'services/p2p_service.dart';
 import 'services/demo/demo_service.dart';
 import 'services/demo/api_service.dart';
 
-const Color kEdenDarkBg = Color(0xFF121212);
-const Color kEdenSurface = Color(0xFF1F1F1F);
-const Color kEdenOrange = Color.fromARGB(255, 0, 247, 255);
-const Color kEdenText = Color(0xFFEEEEEE);
+Color kEdenDarkBg = Color(0xFF121212);
+Color kEdenSurface = Color(0xFF1F1F1F);
+const Color kEdenOrange = Color.fromARGB(255, 255, 102, 0);
+Color kEdenText = Color(0xFFEEEEEE);
 const Color kEdenTextDim = Color(0xFFAAAAAA);
 const Color kEdenBorder = Color(0xFF333333);
 
@@ -129,11 +129,11 @@ class MyApp extends StatelessWidget {
             scaffoldBackgroundColor: kEdenDarkBg,
             primaryColor: kEdenOrange,
             cardColor: kEdenSurface,
-            textTheme: const TextTheme(
+            textTheme: TextTheme(
               bodyMedium: TextStyle(color: kEdenText, fontFamily: 'Roboto'),
               titleLarge: TextStyle(color: kEdenText, fontFamily: 'Oswald', fontWeight: FontWeight.bold),
             ),
-            colorScheme: const ColorScheme.dark(
+            colorScheme: ColorScheme.dark(
               primary: kEdenOrange,
               surface: kEdenSurface,
             ),
@@ -190,7 +190,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _steamApiKeyController = TextEditingController();
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
-
   Timer? _refreshTimer;
   Timer? _scoreTimer;
   Timer? _steamIdTimer;
@@ -201,6 +200,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   String _status = "WAITING FOR ACTION"; 
   String _level = "10";
   String _score = "CT 0 - 0 T";
+  bool _isWhiteMode = false;
   bool _isSearching = false;
   bool _isEngineRunning = false;
   bool _isCompanionVisible = false;
@@ -890,17 +890,37 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     }
   }
 
+  void _toggleColors() {
+    setState(() {
+      _isWhiteMode = !_isWhiteMode;
+
+      if (_isWhiteMode) {
+        kEdenText = Color(0x00EEEEEE);
+        kEdenDarkBg = Colors.white;
+        kEdenSurface = Colors.white;
+      } else {
+        kEdenText = Color(0xFFEEEEEE);
+        kEdenDarkBg =  Color(0xFF121212);
+        kEdenSurface = Color(0xFF1F1F1F);
+      }
+    });
+  }
+
   Widget _buildSidebar() {
     return Container(
       width: 70, color: kEdenSurface,
       child: Column(
         children: [
           const SizedBox(height: 20),
-          const Icon(Icons.shield_moon, color: kEdenOrange, size: 32),
+          IconButton(
+            icon: const Icon(Icons.shield_moon, size: 32),
+            color: kEdenOrange, 
+            onPressed: _toggleColors, 
+          ),
           const SizedBox(height: 30),
           _buildSideIcon(Icons.sports_esports, _currentView == 0, onTap: () => setState(() => _currentView = 0,)),
           _buildSideIcon(Icons.people, _currentView == 1, onTap: () => setState(() => _currentView = 1)),
-          _buildSideIcon(Icons.people, _currentView == 2, onTap: () => setState(() => _currentView = 2)),
+          _buildSideIcon(Icons.star, _currentView == 2, onTap: () => setState(() => _currentView = 2)),
           _buildSideIcon(Icons.bar_chart, _currentView == 3, onTap: () {
             setState(() => _currentView = 3);
             _fetchMatches();
@@ -935,10 +955,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
     return Container(
       height: 80, padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(color: kEdenSurface, border: Border(bottom: BorderSide(color: kEdenBorder))),
+      decoration: BoxDecoration(color: kEdenSurface, border: const Border(bottom: BorderSide(color: kEdenBorder))),
       child: Row(
         children: [
-          Text(title, style: const TextStyle(color: kEdenText, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
+          Text(title, style: TextStyle(color: kEdenText, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
           const SizedBox(width: 40),
           
           if (_currentView == 0) ...[
@@ -989,7 +1009,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             child: CircleAvatar(
               radius: 18, backgroundColor: Colors.grey[800],
               backgroundImage: _avatarImage != null ? FileImage(_avatarImage!) : null,
-              child: _avatarImage == null ? const Icon(Icons.person, size: 18, color: kEdenText) : null,
+              child: _avatarImage == null ? Icon(Icons.person, size: 18, color: kEdenText) : null,
             ),
           ),
         ],
@@ -1315,13 +1335,13 @@ Widget _buildFriendList() {
           return InkWell(onTap: () => setState(() => _selectedMap = _maps[i]), child: Container(decoration: BoxDecoration(color: isSelected ? kEdenOrange : kEdenSurface, borderRadius: BorderRadius.circular(4), border: Border.all(color: isSelected ? kEdenOrange : kEdenBorder)), alignment: Alignment.center, child: Text(_maps[i].replaceAll("de_", "").toUpperCase(), style: TextStyle(color: isSelected ? Colors.white : kEdenTextDim, fontWeight: FontWeight.bold, fontSize: 12))));
         })),
         const SizedBox(height: 20),
-        TextField(controller: _joinController, style: const TextStyle(color: kEdenText), decoration: InputDecoration(hintText: _lgpkg.get("PasteHubID"), hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kEdenSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kEdenOrange), onPressed: _joinGame))),
+        TextField(controller: _joinController, style: TextStyle(color: kEdenText), decoration: InputDecoration(hintText: _lgpkg.get("PasteHubID"), hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kEdenSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kEdenOrange), onPressed: _joinGame))),
       ],
     );
   }
 
   void _showErrorDialog(String title, String msg) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kEdenSurface, title: Text(title, style: const TextStyle(color: kEdenOrange)), content: Text(msg, style: const TextStyle(color: kEdenText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
+    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kEdenSurface, title: Text(title, style: const TextStyle(color: kEdenOrange)), content: Text(msg, style: TextStyle(color: kEdenText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
   }
   
   Widget _buildShopTab(String label, int index) {
@@ -1840,7 +1860,7 @@ Widget _buildBettingContent() {
                             const SnackBar(content: Text("Settings Saved. Restart app for any changes to fully take effect."))
                           );
                         }, 
-                        child: const Text("SUBMIT", style: const TextStyle(color: kEdenText))
+                        child: Text("SUBMIT", style: TextStyle(color: kEdenText))
                       ),
                     ],
                   )
@@ -1937,7 +1957,7 @@ Widget _buildBettingContent() {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     icon: const Icon(Icons.upload_file),
-                    label: const Text("ANALYZE NEW DEMO",style: const TextStyle(color: kEdenText)),
+                    label: Text("ANALYZE NEW DEMO",style: TextStyle(color: kEdenText)),
                     onPressed: () async {
                       await _uploadDemo();
                       _fetchMatches();
