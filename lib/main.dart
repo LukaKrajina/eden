@@ -831,9 +831,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   @override
   Widget build(BuildContext context) {
-    // Ensure this widget also rebuilds correctly when language changes
     _lgpkg.currentLanguage = appLanguageNotifier.value;
-
     return Scaffold(
       backgroundColor: kEdenDarkBg,
       body: Stack(
