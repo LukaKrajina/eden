@@ -35,8 +35,7 @@ final ApiServer apiServer = ApiServer();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Load Settings on Start
+
   await _loadSettings();
 
   final steam = SteamService();
@@ -67,7 +66,6 @@ void main() async {
   ));
 }
 
-// --- Persistence Helpers ---
 Future<void> _loadSettings() async {
   try {
     final file = File('eden_config.json');

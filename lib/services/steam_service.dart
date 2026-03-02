@@ -12,12 +12,18 @@ String generateRandomSuffix() {
 }
 
 class SteamService {
+  static final SteamService _instance = SteamService._internal();
   bool _isInitialized = false;
-  
   CSteamId? _myCSteamID;
   String _playerName = "user${generateRandomSuffix()}";
   Pointer<UnsignedChar>? _playerAvatarBytes;
 
+  factory SteamService() {
+    return _instance;
+  }
+  
+  SteamService._internal();
+  
   Future<void> init() async {
     try {
       SteamClient.init(appId: 730);
@@ -52,7 +58,6 @@ class SteamService {
     }
   }
 
-  /// Helper to convert Steam Image Handle to Flutter-readable Bytes
   Future<Pointer<UnsignedChar>?> _getImageBytes(int imageHandle) async {
   final Pointer<UnsignedInt> pnWidth = calloc<UnsignedInt>();
   final Pointer<UnsignedInt> pnHeight = calloc<UnsignedInt>();
