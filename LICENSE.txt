@@ -672,3 +672,24 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+-------------------------------------------------------------------------
+
+                    THIRD-PARTY NOTICES
+1. Wintun
+   This project makes use of Wintun (https://www.wintun.net).
+   Copyright (C) 2019 WireGuard LLC. All Rights Reserved.
+   Wintun is distributed under the GNU General Public License v2.0.
+   You may obtain a copy of the license at: https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
+
+2. Valve Corporation / Counter-Strike 2
+   This project is not affiliated with, endorsed by, or sponsored by Valve Corporation. 
+   Counter-Strike, the Counter-Strike logo, and Steam are trademarks and/or registered 
+   trademarks of Valve Corporation. All rights reserved. 
+   
+   Game State Integration (GSI) and Demo parsing are interactions with Valve's 
+   intellectual property and are subject to the Steam Subscriber Agreement.
+
+3. Libp2p
+   Portions of the networking stack utilize Libp2p, distributed under the MIT License 
+   and Apache 2.0 License.
