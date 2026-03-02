@@ -16,3 +16,13 @@ prost = "0.12"
 postgres = "0.19"
 chrono = "0.4"
 thiserror = "1.0"
+
+[profile.dev]
+panic = "unwind"
+lto = true
+codegen-units = 1
+
+[profile.release]
+panic = "unwind"
+lto = true
+codegen-units = 1

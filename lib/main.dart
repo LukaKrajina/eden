@@ -614,60 +614,62 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Future<void> _uploadDemo() async {
-  FilePickerResult? result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['dem'],
-  );
-
-  if (result != null) {
-    String path = result.files.single.path!;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return const Center(
-          child: CircularProgressIndicator(
-            color: kEdenOrange,
-            backgroundColor: Colors.black26,
-          ),
-        );
-      },
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['dem'],
     );
 
-    try {
-      final res = await demo.processDemo(path);
+    if (result != null) {
+      String path = result.files.single.path!;
 
-      if (mounted) {
-        Navigator.of(context).pop(); 
-      }
-
-      if (res.success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: Colors.green,
-              content: Text(
-                "MATCH ANALYZED", 
-                style: TextStyle(fontFamily: "Oswald", fontWeight: FontWeight.bold)
-              ),
-              duration: Duration(seconds: 2),
-            )
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: kEdenOrange,
+              backgroundColor: Colors.black26,
+            ),
           );
-          setState(() {
-            _currentView = 3;
-          });
+        },
+      );
+
+      try {
+        final res = await demo.processDemo(path);
+
+        if (!mounted) return;
+
+        Navigator.of(context).pop(); 
+
+        if (res.success) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: Colors.green,
+                content: Text(
+                  "MATCH ANALYZED", 
+                  style: TextStyle(fontFamily: "Oswald", fontWeight: FontWeight.bold)
+                ),
+                duration: Duration(seconds: 2),
+              )
+            );
+            _fetchMatches();
+            setState(() {
+              _currentView = 3;
+            });
+          }
+        } else {
+          if (mounted) {
+            _showErrorDialog("Analysis Failed", res.error ?? "Unknown error");
+          }
         }
-      } else {
-        if (mounted) {
-          _showErrorDialog("Analysis Failed", res.error ?? "Unknown error");
-        }
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        _showErrorDialog("Critical Error", e.toString());
       }
-    } catch (e) {
-      if (mounted) Navigator.of(context).pop();
-      if (mounted) _showErrorDialog("Critical Error", e.toString());
     }
-  }
 }
 
   Future<void> _fetchMatches() async {
@@ -1619,18 +1621,16 @@ Widget _buildBettingContent() {
         final m = _liveMatches[i];
         final amountCtrl = TextEditingController();
 
-        // Calculate dynamic odds based on score (simplified logic)
         int scoreCT = m['score_ct'];
         int scoreT = m['score_t'];
         int total = scoreCT + scoreT;
         double oddsCT = 1.8; 
         double oddsT = 1.8;
-        
-        // Simple odds shift based on lead
+
         if (total > 0) {
           if (scoreCT > scoreT) {
-            oddsCT = 1.2 + (scoreT / total); // Lower return for winner
-            oddsT = 2.0 + ((scoreCT - scoreT) * 0.1); // Higher return for loser
+            oddsCT = 1.2 + (scoreT / total);
+            oddsT = 2.0 + ((scoreCT - scoreT) * 0.1);
           } else if (scoreT > scoreCT) {
             oddsT = 1.2 + (scoreCT / total);
             oddsCT = 2.0 + ((scoreT - scoreCT) * 0.1);
@@ -1738,7 +1738,6 @@ Widget _buildBettingContent() {
                   Text(_lgpkg.get("Settings"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: "Oswald", fontSize: 20)), 
                   const SizedBox(height: 20), 
                   
-                  // CS2 Path Input
                   Text(_lgpkg.get("CS2Path"), style: const TextStyle(color: Colors.grey)), 
                   TextField(
                     controller: _cs2PathController, 
@@ -1749,8 +1748,6 @@ Widget _buildBettingContent() {
                     ),
                   ), 
                   const SizedBox(height: 20),
-
-                  // Steam ID Key Input
                   const Text("Steam 64 ID (For Trade)", style: TextStyle(color: Colors.grey)), 
                     TextField(
                       controller: _steamIDKeyController, 
@@ -1761,8 +1758,6 @@ Widget _buildBettingContent() {
                       ),
                     ), 
                     const SizedBox(height: 20),
-
-                  // Steam API Key Input
                   const Text("Steam Web API Key", style: TextStyle(color: Colors.grey)), 
                     TextField(
                       controller: _steamApiKeyController, 
@@ -1774,8 +1769,6 @@ Widget _buildBettingContent() {
                       ),
                     ), 
                     const SizedBox(height: 20),
-
-                  // DB User Input
                   const Text("Database User", style: TextStyle(color: Colors.grey)),
                   TextField(
                     controller: _dbUserController, 
@@ -1786,8 +1779,6 @@ Widget _buildBettingContent() {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // DB Password Input
                   const Text("Database Password", style: TextStyle(color: Colors.grey)), 
                   TextField(
                     controller: _dbPassController, 
@@ -1799,8 +1790,6 @@ Widget _buildBettingContent() {
                     ),
                   ), 
                   const SizedBox(height: 20),
-
-                  // Language Selection
                   Text("Language / 语言", style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 5),
                   Container(
@@ -1824,8 +1813,6 @@ Widget _buildBettingContent() {
                   ),
 
                   const SizedBox(height: 30), 
-                  
-                  // Action Buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -1837,32 +1824,23 @@ Widget _buildBettingContent() {
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange), 
                         onPressed: (){ 
-                          // 1. Update Global Settings
                           g_CS2Path = _cs2PathController.text;
                           g_dbUser = _dbUserController.text;
                           g_DbPassword = _dbPassController.text;
                           g_steamIDKey = _steamIDKeyController.text;
                           g_steamApiKey = _steamApiKeyController.text;
                           appLanguageNotifier.value = tempLanguage;
-                          
-                          // 2. Update Runtime Services
                           widget.demoService.setDatabaseUser(g_dbUser);
                           widget.demoService.setDatabasePassword(g_DbPassword);
                           widget.p2pService.updateSteamAPIKey(g_steamApiKey);
-                          // 3. Save to File
                           _saveSettings();
-                          
-                          // 4. Close Dialog
                           Navigator.pop(ctx); 
-                          
-                          // 5. Force UI Refresh (Language change handles itself via Notifier)
                           setState(() {});
-
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text("Settings Saved. Restart app for any changes to fully take effect."))
                           );
                         }, 
-                        child: const Text("SUBMIT")
+                        child: const Text("SUBMIT", style: const TextStyle(color: kEdenText))
                       ),
                     ],
                   )
@@ -1875,7 +1853,6 @@ Widget _buildBettingContent() {
     );
   }
 
-  // --- Demo Stats View ---
   Widget _buildStatsView() {
     return Row(
       children: [
@@ -1960,7 +1937,7 @@ Widget _buildBettingContent() {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     icon: const Icon(Icons.upload_file),
-                    label: const Text("ANALYZE NEW DEMO"),
+                    label: const Text("ANALYZE NEW DEMO",style: const TextStyle(color: kEdenText)),
                     onPressed: () async {
                       await _uploadDemo();
                       _fetchMatches();

@@ -1,13 +1,22 @@
 // lib.rs
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::fs::OpenOptions;
 use std::os::raw::c_char;
+use std::panic;
+use std::io::Write;
 use postgres::{Client, NoTls};
 use source2_demo::{FieldValue, prelude::*};
 use source2_demo::proto::CDemoFileHeader;
 use memmap2::Mmap;
 
 const WORLD_ENT_ID: u64 = 65535;
+
+fn log_to_file(msg: &str) {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("parser_log.txt") {
+        let _ = writeln!(file, "{}", msg);
+    }
+}
 
 #[derive(Default, Clone)] 
 struct PlayerStats {
@@ -132,7 +141,7 @@ impl MatchCollector {
             return p.team_num;
         }
         
-        let entity_idx = (userid & 0x7FF) as i32;
+        let entity_idx = (userid & 0x3FFF) as i32;
 
         if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
              if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
@@ -148,7 +157,7 @@ impl MatchCollector {
             let mut steam_id = "BOT".to_string();
             let mut team_num = 0;
 
-            let entity_idx = (userid & 0x7FF) as i32;
+            let entity_idx = (userid & 0x3FFF) as i32;
 
             if let Ok(entity) = ctx.entities().get_by_class_id(entity_idx) {
                 
@@ -203,16 +212,26 @@ impl MatchCollector {
 fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let file = std::fs::File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
+
+    log_to_file("File mapped successfully");
     
     let mut parser = Parser::new(&mmap)?;
     let collector = parser.register_observer::<MatchCollector>();
-    
+
+    log_to_file("Parser initialized, running...");
+
     parser.run_to_end()?;
 
+    log_to_file("Parsing complete.");
+
     let mut collector = collector.borrow_mut();
-    
+
+    log_to_file("Connecting to DB...");
+
     let mut client = Client::connect(db_url, NoTls)?;
     let mut transaction = client.transaction()?;
+
+    log_to_file("Inserting Match...");
 
     let row = transaction.query_one(
         "INSERT INTO matches (map_name, score_ct, score_t, file_name) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -242,23 +261,44 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
 
     transaction.commit()?;
 
+    log_to_file("Transaction committed successfully.");
+
     Ok(format!("{{ \"success\": true, \"match_id\": {} }}", match_id))
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn analyze_demo(path_ptr: *const c_char, db_url_ptr: *const c_char) -> *mut c_char {
-    let c_path = unsafe { CStr::from_ptr(path_ptr) };
-    let c_db = unsafe { CStr::from_ptr(db_url_ptr) };
-    
-    let path = c_path.to_str().unwrap_or("");
-    let db = c_db.to_str().unwrap_or("");
+    let result = panic::catch_unwind(|| {
+        let c_path = unsafe { CStr::from_ptr(path_ptr) };
+        let c_db = unsafe { CStr::from_ptr(db_url_ptr) };
+        
+        let path = c_path.to_str().unwrap_or("");
+        let db = c_db.to_str().unwrap_or("");
 
-    let result = match process_demo(path, db) {
+        match process_demo(path, db) {
+            Ok(json) => json,
+            Err(e) => {
+                log_to_file(&format!("Error: {}", e));
+                format!("{{ \"success\": false, \"error\": \"{}\" }}", e)
+            }
+        }
+    });
+
+    let final_json = match result {
         Ok(json) => json,
-        Err(e) => format!("{{ \"success\": false, \"error\": \"{}\" }}", e),
+        Err(_) => {
+            log_to_file("Critical Panic Caught!");
+            "{ \"success\": false, \"error\": \"Critical Panic in Rust Core\" }".to_string()
+        },
     };
 
-    CString::new(result).unwrap().into_raw()
+    match CString::new(final_json) {
+        Ok(c_str) => c_str.into_raw(),
+        Err(_) => {
+            let safe_err = CString::new("{ \"success\": false, \"error\": \"CString NulError\" }").unwrap();
+            safe_err.into_raw()
+        }
+    }
 }
 
 #[unsafe(no_mangle)]

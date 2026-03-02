@@ -1,0 +1,5 @@
+E:\Project\eden\demo_core\target\debug\build\parking_lot_core-34b935b7fc1c8a8c\build_script_build-34b935b7fc1c8a8c.d: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\parking_lot_core-0.9.12\build.rs
+
+E:\Project\eden\demo_core\target\debug\build\parking_lot_core-34b935b7fc1c8a8c\build_script_build-34b935b7fc1c8a8c.exe: C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\parking_lot_core-0.9.12\build.rs
+
+C:\Users\tamar\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\parking_lot_core-0.9.12\build.rs:

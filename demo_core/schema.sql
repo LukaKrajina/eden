@@ -1,4 +1,3 @@
--- Create the matches table
 CREATE TABLE IF NOT EXISTS matches (
     id SERIAL PRIMARY KEY,
     map_name VARCHAR(255) NOT NULL,
@@ -8,7 +7,6 @@ CREATE TABLE IF NOT EXISTS matches (
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create the player_stats table
 CREATE TABLE IF NOT EXISTS player_stats (
     id SERIAL PRIMARY KEY,
     match_id INTEGER REFERENCES matches(id) ON DELETE CASCADE,
@@ -22,5 +20,4 @@ CREATE TABLE IF NOT EXISTS player_stats (
     CONSTRAINT unique_player_match UNIQUE (match_id, steam_id)
 );
 
--- Create an index for faster API lookups
 CREATE INDEX idx_player_stats_match_id ON player_stats(match_id);
