@@ -6,9 +6,8 @@ use source2_demo::{FieldValue, prelude::*};
 use source2_demo::proto::CDemoFileHeader;
 use memmap2::Mmap;
 
-// --- Data Structures ---
 
-#[derive(Default, Clone)] // Added Clone for safer handling
+#[derive(Default, Clone)] 
 struct PlayerStats {
     steam_id: String,
     name: String,
@@ -17,18 +16,17 @@ struct PlayerStats {
     assists: i32,
     total_damage: i32,
     mvps: i32,
-    team_num: i32, // Added to track team for Friendly Fire checks
+    team_num: i32,
 }
 
 #[derive(Default)]
 struct MatchCollector {
-    players: HashMap<u64, PlayerStats>, // Key: UserID
+    players: HashMap<u64, PlayerStats>,
     score_ct: i32,
     score_t: i32,
     map_name: String,
 }
 
-// --- Helper Functions ---
 
 fn extract_id(val: Option<&EventValue>) -> u64 {
     match val {
@@ -43,12 +41,10 @@ fn extract_i32(val: Option<&EventValue>) -> i32 {
         Some(EventValue::Int(v)) => *v,
         Some(EventValue::Int(v)) => *v as i32,
         Some(EventValue::Float(v)) => *v as i32,
-        Some(EventValue::Byte(v)) => *v as i32, // Critical fix for round_end
+        Some(EventValue::Byte(v)) => *v as i32, 
         _ => 0,
     }
 }
-
-// --- Observer Implementation ---
 
 #[observer(all)]
 impl MatchCollector {
@@ -66,7 +62,6 @@ impl MatchCollector {
                 let attacker_id = extract_id(event.get_value("attacker").ok());
                 let assister_id = extract_id(event.get_value("assister").ok());
 
-                // FIX #2: Factional Integrity (No Team Kills counting as kills)
                 let attacker_team = self.get_player_team(ctx, attacker_id);
                 let victim_team = self.get_player_team(ctx, victim_id);
 
@@ -80,17 +75,14 @@ impl MatchCollector {
                     p.deaths += 1;
                 }
                 
-                // Assist logic implies distinct players
                 if assister_id != 0 && assister_id != attacker_id {
                     let p = self.get_player(ctx, assister_id);
                     p.assists += 1;
                 }
             },
             "round_end" => {
-                // FIX #1 Usage: winner is parsed correctly as byte -> i32
                 let winner = extract_i32(event.get_value("winner").ok());
                 
-                // Source 2 Team IDs: 2 = T, 3 = CT
                 if winner == 2 { self.score_t += 1; }      
                 if winner == 3 { self.score_ct += 1; }     
             },
@@ -103,13 +95,12 @@ impl MatchCollector {
             },
             "player_hurt" => {
                 let attacker_id = extract_id(event.get_value("attacker").ok());
-                let victim_id = extract_id(event.get_value("userid").ok()); // Need victim to check team
+                let victim_id = extract_id(event.get_value("userid").ok());
                 let dmg = extract_i32(event.get_value("dmg_health").ok());
                 
                 let attacker_team = self.get_player_team(ctx, attacker_id);
                 let victim_team = self.get_player_team(ctx, victim_id);
 
-                // FIX #2: Only count damage against enemies
                 if attacker_id != 0 && attacker_id != victim_id && attacker_team != victim_team {
                     let p = self.get_player(ctx, attacker_id);
                     p.total_damage += dmg;
@@ -120,14 +111,11 @@ impl MatchCollector {
         Ok(())
     }
 
-    // Helper to peek team without creating a full entry if not needed
     fn get_player_team(&self, ctx: &Context, userid: u64) -> i32 {
         if let Some(p) = self.players.get(&userid) {
             return p.team_num;
         }
-        // Fallback: try to peek entity
         if let Ok(controller) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
-             // Try standard TeamNum property
              if let Ok(FieldValue::Signed32(t)) = controller.get_property_by_name("m_iTeamNum") {
                  return *t;
              }
@@ -145,14 +133,12 @@ impl MatchCollector {
                 
                 let class = entity.class();
                 if class.name() == "CCSPlayerController" {
-                     // Extract Name
                         if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
                             name = n.to_string();
                         } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_szName") {
                             name = n.to_string();
                         }
 
-                        // Extract SteamID
                         if let Ok(field_val) = entity.get_property_by_name("m_steamID") {
                             match field_val {
                                 FieldValue::Unsigned64(s) => steam_id = s.to_string(),
@@ -161,7 +147,6 @@ impl MatchCollector {
                             }
                         }
 
-                         // Extract Team
                         if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
                             team_num = *t;
                         }
@@ -198,17 +183,14 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     )?;
     let match_id: i32 = row.get(0);
 
-    // Calculated valid rounds (Avoid divide by zero)
     let total_rounds = (collector.score_ct + collector.score_t).max(1) as f32;
 
     for stats in collector.players.values() {
 
         if stats.steam_id == "BOT" { continue; }
         
-        // Basic calculations
         let adr = stats.total_damage as f32 / total_rounds;
         
-        // Simplified HLTV 2.0 approximation
         let kill_rating = stats.kills as f32 / total_rounds / 0.679;
         let survival_rating = (total_rounds - stats.deaths as f32) / total_rounds / 0.317;
         let rating = (kill_rating + 0.7 * survival_rating) / 2.7; 
@@ -219,7 +201,6 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
         )?;
     }
 
-    // Commit the transaction
     transaction.commit()?;
 
     Ok(format!("{{ \"success\": true, \"match_id\": {} }}", match_id))

@@ -168,9 +168,9 @@ bool LoadGoDLL() {
     static HMODULE hGo = NULL;
     if (hGo) return true;
 
-    hGo = LoadLibraryExW(L"libp2p_core.dll", NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
+    hGo = LoadLibraryExW(L"Cain.dll", NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
     if (!hGo) {
-        std::cerr << "[Error] Could not find libp2p_core.dll" << std::endl;
+        std::cerr << "[Error] Could not find Cain.dll" << std::endl;
         return false;
     }
 
@@ -241,7 +241,7 @@ void ReadFromTunLoop() {
 
 extern "C" __declspec(dllexport) void StartEngine() {
     if (!LoadGoDLL()) {
-        std::cerr << "[Error] Failed to bridge with libp2p_core.dll" << std::endl;
+        std::cerr << "[Error] Failed to bridge with Cain.dll" << std::endl;
         return;
     }
     
