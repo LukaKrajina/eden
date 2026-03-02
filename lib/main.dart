@@ -645,13 +645,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         if (res.success) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
+              SnackBar(
                 backgroundColor: Colors.green,
                 content: Text(
-                  "MATCH ANALYZED", 
-                  style: TextStyle(fontFamily: "Oswald", fontWeight: FontWeight.bold)
+                  _lgpkg.get("MatchAnalyzed"), 
+                  style: const TextStyle(fontFamily: "Oswald", fontWeight: FontWeight.bold)
                 ),
-                duration: Duration(seconds: 2),
+                duration: const Duration(seconds: 2),
               )
             );
             _fetchMatches();
@@ -661,7 +661,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           }
         } else {
           if (mounted) {
-            _showErrorDialog("Analysis Failed", res.error ?? "Unknown error");
+            _showErrorDialog(_lgpkg.get("AnalysisFailed"), res.error ?? "Unknown error");
           }
         }
       } catch (e) {
@@ -951,7 +951,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (_currentView == 0) title = _lgpkg.get("PlayTitle");
     if (_currentView == 1) title = _lgpkg.get("SocialTitle");
     if (_currentView == 2) title = _lgpkg.get("ProConfigTitle");
-    if (_currentView == 4) title = "MARKETPLACE";
+    if (_currentView == 4) title = _lgpkg.get("MarketplaceTitle");
 
     return Container(
       height: 80, padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -969,8 +969,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           ],
 
           if (_currentView == 4) ...[
-            _buildShopTab("AUCTION", 0),
-            _buildShopTab("BET", 1),
+            _buildShopTab(_lgpkg.get("AuctionTab"), 0),
+            _buildShopTab(_lgpkg.get("BetTab"), 1),
           ],
           
           const Spacer(),
@@ -1114,7 +1114,7 @@ Widget _buildFriendList() {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(friend.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Text("Incoming Friend Request", style: TextStyle(color: kEdenOrange, fontSize: 12, fontStyle: FontStyle.italic)),
+              Text(_lgpkg.get("IncomingRequest"), style: const TextStyle(color: kEdenOrange, fontSize: 12, fontStyle: FontStyle.italic)),
             ],
           ),
           const Spacer(),
@@ -1152,11 +1152,11 @@ Widget _buildFriendList() {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(friend.name, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Text("Request Sent - Waiting...", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(_lgpkg.get("RequestSent"), style: const TextStyle(color: Colors.grey, fontSize: 12)),
             ],
           ),
           const Spacer(),
-          const Text("PENDING", style: TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+          Text(_lgpkg.get("Pending"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         ],
       ),
     );
@@ -1322,7 +1322,7 @@ Widget _buildFriendList() {
           child: Container(
             height: 60, alignment: Alignment.center,
             decoration: BoxDecoration(color: _isSearching ? Colors.red[900] : kEdenOrange, borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: (_isSearching ? Colors.red : kEdenOrange).withOpacity(0.4), blurRadius: 15, spreadRadius: 1)]),
-            child: Text(_isSearching ? _lgpkg.get("CancelSearch") : _lgpkg.get("Play"), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
+            child: Text(_isSearching ? _lgpkg.get("CancelMatching") : _lgpkg.get("Play"), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
           ),
         ),
         const SizedBox(height: 12),
@@ -1384,7 +1384,7 @@ Widget _buildFriendList() {
         builder: (context, setDialogState) {
           return AlertDialog(
             backgroundColor: kEdenSurface,
-            title: const Text("Select Item to Sell", style: TextStyle(color: kEdenOrange)),
+            title: Text(_lgpkg.get("SelectItemToSell"), style: const TextStyle(color: kEdenOrange)),
             content: SizedBox(
               width: 500, height: 400,
               child: Column(
@@ -1427,7 +1427,7 @@ Widget _buildFriendList() {
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: Colors.white), 
                           decoration: InputDecoration(
-                              labelText: "Price for ${_inventory[_selectedIndex]['name']} (EDN)",
+                              labelText: "${_lgpkg.get("Price")} - ${_inventory[_selectedIndex]['name']} (EDN)",
                               border: const OutlineInputBorder()
                           )
                       ),
@@ -1437,7 +1437,7 @@ Widget _buildFriendList() {
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: Colors.white), 
                           decoration: InputDecoration(
-                              labelText: "Duration for ${_inventory[_selectedIndex]['name']} (seconds)",
+                              labelText: "${_lgpkg.get("Duration")} - ${_inventory[_selectedIndex]['name']} (seconds)",
                               border: const OutlineInputBorder()
                           )
                       ),
@@ -1463,7 +1463,7 @@ Widget _buildFriendList() {
                     Navigator.pop(ctx);
                     Future.delayed(const Duration(seconds: 1), _refreshAuctions);
                 }, 
-                child: const Text("LIST ITEM")
+                child: Text(_lgpkg.get("ListItemBtn"),style: TextStyle(color: kEdenText))
               )
             ],
           );
@@ -1480,18 +1480,18 @@ Widget _buildFriendList() {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-               const Text("GLOBAL MARKET", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+               Text(_lgpkg.get("GlobalMarket"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                Row(
                  children: [
                    IconButton(
                      icon: const Icon(Icons.refresh, color: kEdenOrange), 
                      onPressed: _refreshAuctions,
-                     tooltip: "Sync with Blockchain",
+                     tooltip: _lgpkg.get("SyncwithBlockchain"),
                    ),
                    const SizedBox(width: 10),
                    ElevatedButton.icon(
                       icon: const Icon(Icons.add_shopping_cart, size: 16),
-                      label: const Text("SELL ITEM"),
+                      label: Text(_lgpkg.get("SellItemBtn")),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[700],
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
@@ -1511,7 +1511,7 @@ Widget _buildFriendList() {
                   children: [
                     const Icon(Icons.wifi_tethering_off, size: 64, color: Colors.white10),
                     const SizedBox(height: 16),
-                    Text("No active listings found on the chain.", style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
+                    Text(_lgpkg.get("NoListingsMsg"), style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
                   ],
                 )
               )
@@ -1525,9 +1525,6 @@ Widget _buildFriendList() {
                 itemCount: _realAuctions.length,
                 itemBuilder: (ctx, i) {
                   final item = _realAuctions[i];
-                  // Blockchain data structure: {id, seller, asset_id, price, expires_at}
-                  
-                  // Helper to determine image based on name (optional visual polish)
                   String imageUrl = ""; 
                   if(item['asset_id'].toString().contains("Asiimov")) imageUrl = "https://market.fp.ps.netease.com/file/65f57072372367dc73b699e2Zc91itAt05?fop=imageView/6/f/webp/q/75";
                   else if(item['asset_id'].toString().contains("Dragon")) imageUrl = "https://market.fp.ps.netease.com/file/65f58ae9831310d75518738eMzkP12O205?fop=imageView/6/f/webp/q/75";
@@ -1566,7 +1563,7 @@ Widget _buildFriendList() {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text("${item['price']} EDN", style: const TextStyle(color: kEdenOrange, fontWeight: FontWeight.bold)),
-                                  if(isMyItem) const Text("YOU", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  if(isMyItem) Text(_lgpkg.get("YouTag"), style: const TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
                                 ],
                               ),
                               const SizedBox(height: 12),
@@ -1575,14 +1572,14 @@ Widget _buildFriendList() {
                                 child: isMyItem 
                                 ? OutlinedButton(
                                     onPressed: null, 
-                                    child: const Text("LISTED", style: TextStyle(color: Colors.grey))
+                                    child: Text(_lgpkg.get("ListedBtn"), style: const TextStyle(color: Colors.grey))
                                   )
                                 : ElevatedButton(
                                     style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
                                     onPressed: () async {
                                       String res = await widget.p2pService.buyItem(
-                                        item['seller'], // Real Seller ID
-                                        item['asset_id'], // Real Asset ID
+                                        item['seller'],
+                                        item['asset_id'],
                                         (item['price'] as num).toDouble()
                                       );
                                       if (mounted) {
@@ -1590,7 +1587,7 @@ Widget _buildFriendList() {
                                         _refreshAuctions(); 
                                       }
                                     },
-                                    child: const Text("BUY NOW"),
+                                    child: Text(_lgpkg.get("BuyNowBtn")),
                                   ),
                               )
                             ],
@@ -1613,7 +1610,7 @@ Future<void> _placeBet(String matchID, String team, String amountStr, double odd
     String res = await widget.p2pService.placeBet(matchID, team, amt);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(res.contains("Error") ? "Bet Failed" : "Bet Placed! Potential Payout: ${(amt * odds).toStringAsFixed(2)} EDN"),
+        content: Text(res.contains("Error") ? _lgpkg.get("BetFailed") : "${_lgpkg.get("BetPlaced")} Payout: ${(amt * odds).toStringAsFixed(2)} EDN"),
         backgroundColor: res.contains("Error") ? Colors.red : Colors.green,
       ));
     }
@@ -1627,9 +1624,9 @@ Widget _buildBettingContent() {
           children: [
             const Icon(Icons.sports_esports_outlined, size: 64, color: Colors.white10),
             const SizedBox(height: 16),
-            Text("No live matches found.", style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
+            Text(_lgpkg.get("NoLiveMatches"), style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
             const SizedBox(height: 8),
-            const Text("Servers broadcast automatically when live.", style: TextStyle(color: Colors.grey, fontSize: 10)),
+            Text(_lgpkg.get("BroadcastMsg"), style: const TextStyle(color: Colors.grey, fontSize: 10)),
           ],
         ),
       );
@@ -1672,7 +1669,7 @@ Widget _buildBettingContent() {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                    child: const Text("LIVE", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    child: Text(_lgpkg.get("LiveTag"), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                   const Spacer(),
                   Text(m['map_name'].toString().toUpperCase(), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
@@ -1768,7 +1765,7 @@ Widget _buildBettingContent() {
                     ),
                   ), 
                   const SizedBox(height: 20),
-                  const Text("Steam 64 ID (For Trade)", style: TextStyle(color: Colors.grey)), 
+                  Text(_lgpkg.get("Steam64ID"), style: const TextStyle(color: Colors.grey)), 
                     TextField(
                       controller: _steamIDKeyController, 
                       style: const TextStyle(color: Colors.white),
@@ -1778,7 +1775,7 @@ Widget _buildBettingContent() {
                       ),
                     ), 
                     const SizedBox(height: 20),
-                  const Text("Steam Web API Key", style: TextStyle(color: Colors.grey)), 
+                  Text(_lgpkg.get("SteamAPIKey"), style: const TextStyle(color: Colors.grey)), 
                     TextField(
                       controller: _steamApiKeyController, 
                       obscureText: true,
@@ -1789,7 +1786,7 @@ Widget _buildBettingContent() {
                       ),
                     ), 
                     const SizedBox(height: 20),
-                  const Text("Database User", style: TextStyle(color: Colors.grey)),
+                  Text(_lgpkg.get("DBUser"), style: const TextStyle(color: Colors.grey)),
                   TextField(
                     controller: _dbUserController, 
                     style: const TextStyle(color: Colors.white),
@@ -1799,7 +1796,7 @@ Widget _buildBettingContent() {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text("Database Password", style: TextStyle(color: Colors.grey)), 
+                  Text(_lgpkg.get("DBPassword"), style: const TextStyle(color: Colors.grey)), 
                   TextField(
                     controller: _dbPassController, 
                     obscureText: true,
@@ -1810,7 +1807,7 @@ Widget _buildBettingContent() {
                     ),
                   ), 
                   const SizedBox(height: 20),
-                  Text("Language / 语言", style: const TextStyle(color: Colors.grey)),
+                  Text(_lgpkg.get("LanguageLabel"), style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 5),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1824,7 +1821,13 @@ Widget _buildBettingContent() {
                       style: const TextStyle(color: Colors.white),
                       items: const [
                         DropdownMenuItem(value: "English", child: Text("English")),
-                        DropdownMenuItem(value: "Chinese", child: Text("Chinese (中文)")),
+                        DropdownMenuItem(value: "Chinese", child: Text("Chinese")),
+                        DropdownMenuItem(value: "Russian", child: Text("Russian")),
+                        DropdownMenuItem(value: "Ukrainian", child: Text("Ukrainian")),
+                        DropdownMenuItem(value: "Polish", child: Text("Polish")),
+                        DropdownMenuItem(value: "Japanese", child: Text("Japanese")),
+                        DropdownMenuItem(value: "Korean", child: Text("Korean")),
+
                       ],
                       onChanged: (val) {
                          if(val != null) setDialogState(() => tempLanguage = val);
@@ -1860,7 +1863,7 @@ Widget _buildBettingContent() {
                             const SnackBar(content: Text("Settings Saved. Restart app for any changes to fully take effect."))
                           );
                         }, 
-                        child: Text("SUBMIT", style: TextStyle(color: kEdenText))
+                        child: Text(_lgpkg.get("Submit"), style: TextStyle(color: kEdenText))
                       ),
                     ],
                   )
@@ -1890,7 +1893,7 @@ Widget _buildBettingContent() {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_lgpkg.get("MATCH HISTORY"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
+                    Text(_lgpkg.get("MatchHistory"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
                     IconButton(
                       icon: const Icon(Icons.refresh, size: 16, color: kEdenOrange),
                       onPressed: _fetchMatches,
@@ -1957,7 +1960,7 @@ Widget _buildBettingContent() {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     icon: const Icon(Icons.upload_file),
-                    label: Text("ANALYZE NEW DEMO",style: TextStyle(color: kEdenText)),
+                    label: Text(_lgpkg.get("AnalyzeDemoBtn"),style: TextStyle(color: kEdenText)),
                     onPressed: () async {
                       await _uploadDemo();
                       _fetchMatches();
@@ -1987,9 +1990,9 @@ Widget _buildBettingContent() {
         children: [
           const Icon(Icons.analytics_outlined, size: 64, color: kEdenTextDim),
           const SizedBox(height: 16),
-          Text("SELECT A MATCH", style: TextStyle(color: kEdenTextDim.withOpacity(0.5), fontSize: 24, fontFamily: "Oswald")),
+          Text(_lgpkg.get("SelectMatchTitle"), style: TextStyle(color: kEdenTextDim.withOpacity(0.5), fontSize: 24, fontFamily: "Oswald")),
           const SizedBox(height: 8),
-          const Text("Select a match from the left to view detailed analytics", style: TextStyle(color: Colors.grey)),
+          Text(_lgpkg.get("SelectMatchMsg"), style: const TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -2006,7 +2009,7 @@ Widget _buildBettingContent() {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("SCOREBOARD", style: TextStyle(color: Colors.white, fontSize: 24, fontFamily: "Oswald")),
+            Text(_lgpkg.get("Scoreboard"), style: const TextStyle(color: Colors.white, fontSize: 24, fontFamily: "Oswald")),
             Row(
               children: [
                 OutlinedButton(onPressed: (){}, child: const Text("DOWNLOAD DEMO")),
@@ -2014,7 +2017,7 @@ Widget _buildBettingContent() {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: kEdenSurface),
                   onPressed: (){}, 
-                  child: const Text("WATCH ROOM")
+                  child: Text(_lgpkg.get("WatchRoom"))
                 ),
               ],
             )
@@ -2026,14 +2029,14 @@ Widget _buildBettingContent() {
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
           color: kEdenSurface,
-          child: const Row(
+          child: Row(
             children: [
-              Expanded(flex: 3, child: Text("PLAYER", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Text("KILLS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Text("DEATHS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Text("K/D", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Text("ADR", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
-              Expanded(child: Text("RATING", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(flex: 3, child: Text(_lgpkg.get("HeaderPlayer"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(_lgpkg.get("HeaderKills"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(_lgpkg.get("HeaderDeaths"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(_lgpkg.get("HeaderKD"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(_lgpkg.get("HeaderADR"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(_lgpkg.get("HeaderRating"), style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
             ],
           ),
         ),
@@ -2096,8 +2099,6 @@ Widget _buildBettingContent() {
   }
 }
 
-// --- New Wallet Window ---
-
 class WalletWindow extends StatefulWidget {
   final P2PService p2pService;
   final String myPeerID;
@@ -2116,11 +2117,8 @@ class _WalletWindowState extends State<WalletWindow> {
   @override
   void initState() {
     super.initState();
-    // Sync language
     _lgpkg.currentLanguage = appLanguageNotifier.value;
-    
     _fetchBalance();
-    // Heartbeat to refresh balance every second
     _heartbeat = Timer.periodic(const Duration(seconds: 1), (_) => _fetchBalance());
   }
 
@@ -2227,7 +2225,6 @@ class _WalletWindowState extends State<WalletWindow> {
 
   @override
   Widget build(BuildContext context) {
-    // Ensure text updates if language changed while wallet open
     _lgpkg.currentLanguage = appLanguageNotifier.value;
 
     return Dialog(
@@ -2276,8 +2273,6 @@ class _WalletWindowState extends State<WalletWindow> {
     );
   }
 }
-
-// --- Trade Interface Overlay ---
 
 class TradeOverlay extends StatefulWidget {
   final String me;
@@ -2362,7 +2357,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
         decoration: BoxDecoration(color: const Color(0xFF1E1E1E), border: Border.all(color: kEdenBorder), borderRadius: BorderRadius.circular(8)),
         child: Column(
           children: [
-            // Header
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(color: Color(0xFF121212), border: Border(bottom: BorderSide(color: kEdenBorder))),
@@ -2372,7 +2366,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
             Expanded(
               child: Row(
                 children: [
-                  // Seller (Left)
                   Expanded(
                     child: Container(
                       color: const Color(0xFF252525),
@@ -2391,8 +2384,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
                       ),
                     ),
                   ),
-
-                  // Center (Arrow & Input)
                   SizedBox(
                     width: 200,
                     child: Column(
@@ -2428,8 +2419,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
                       ],
                     ),
                   ),
-
-                  // Buyer (Right)
                   Expanded(
                     child: Container(
                       color: const Color(0xFF252525),
@@ -2452,7 +2441,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
               ),
             ),
 
-            // Footer Actions
             Container(
               padding: const EdgeInsets.all(24),
               color: const Color(0xFF121212),
@@ -2535,7 +2523,11 @@ class _CompanionWindowState extends State<CompanionWindow> {
                   final info = widget.p2pService.getDashboardData();
                   return Row(
                     children: [
-                      Text("TUNNEL: ${info.isMounted ? _lgpkg.get("TunnelSecured") : _lgpkg.get("TunnelWaiting")} \nSESSION: ${widget.p2pService.isConnected() ? _lgpkg.get("SessionConnected") : _lgpkg.get("SessionIdle")}", style: const TextStyle(color: Colors.grey, fontSize: 10, fontFamily: "monospace")),
+                      Text(
+                        "TUNNEL: ${info.isMounted ? _lgpkg.get("TunnelSecured") : _lgpkg.get("TunnelWaiting")} \n"
+                        "SESSION: ${widget.p2pService.isConnected() ? _lgpkg.get("SessionConnected") : _lgpkg.get("SessionIdle")}", 
+                        style: const TextStyle(color: Colors.grey, fontSize: 10, fontFamily: "monospace")
+                      ),
                       const Spacer(),
                       Text(info.date)
                     ],
