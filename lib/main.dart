@@ -2038,7 +2038,6 @@ Widget _buildBettingContent() {
           ),
         ),
         
-        // Table Rows
         Expanded(
           child: ListView.builder(
             itemCount: _selectedMatchStats.length,
