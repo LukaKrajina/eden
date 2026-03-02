@@ -1,3 +1,4 @@
+// lib.rs
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -6,6 +7,7 @@ use source2_demo::{FieldValue, prelude::*};
 use source2_demo::proto::CDemoFileHeader;
 use memmap2::Mmap;
 
+const WORLD_ENT_ID: u64 = 65535;
 
 #[derive(Default, Clone)] 
 struct PlayerStats {
@@ -25,13 +27,14 @@ struct MatchCollector {
     score_ct: i32,
     score_t: i32,
     map_name: String,
+    team_ent_indices: Vec<i32>, 
 }
-
 
 fn extract_id(val: Option<&EventValue>) -> u64 {
     match val {
         Some(EventValue::Int(v)) => *v as u64,
         Some(EventValue::U64(v)) => *v,
+        Some(EventValue::Byte(v)) => *v as u64,
         _ => 0,
     }
 }
@@ -39,11 +42,15 @@ fn extract_id(val: Option<&EventValue>) -> u64 {
 fn extract_i32(val: Option<&EventValue>) -> i32 {
     match val {
         Some(EventValue::Int(v)) => *v,
-        Some(EventValue::Int(v)) => *v as i32,
+        Some(EventValue::U64(v)) => *v as i32,
         Some(EventValue::Float(v)) => *v as i32,
         Some(EventValue::Byte(v)) => *v as i32, 
         _ => 0,
     }
+}
+
+fn sanitize_damage(val: i32) -> i32 {
+    if val < 0 { 0 } else { val }
 }
 
 #[observer(all)]
@@ -62,6 +69,10 @@ impl MatchCollector {
                 let attacker_id = extract_id(event.get_value("attacker").ok());
                 let assister_id = extract_id(event.get_value("assister").ok());
 
+                if attacker_id == WORLD_ENT_ID || victim_id == WORLD_ENT_ID {
+                    return Ok(());
+                }
+
                 let attacker_team = self.get_player_team(ctx, attacker_id);
                 let victim_team = self.get_player_team(ctx, victim_id);
 
@@ -75,20 +86,19 @@ impl MatchCollector {
                     p.deaths += 1;
                 }
                 
-                if assister_id != 0 && assister_id != attacker_id {
+                if assister_id != 0 && assister_id != attacker_id && assister_id != WORLD_ENT_ID {
                     let p = self.get_player(ctx, assister_id);
                     p.assists += 1;
                 }
             },
             "round_end" => {
                 let winner = extract_i32(event.get_value("winner").ok());
-                
                 if winner == 2 { self.score_t += 1; }      
                 if winner == 3 { self.score_ct += 1; }     
             },
             "round_mvp" => {
                 let userid = extract_id(event.get_value("userid").ok());
-                if userid != 0 {
+                if userid != 0 && userid != WORLD_ENT_ID {
                     let p = self.get_player(ctx, userid);
                     p.mvps += 1;
                 }
@@ -96,8 +106,14 @@ impl MatchCollector {
             "player_hurt" => {
                 let attacker_id = extract_id(event.get_value("attacker").ok());
                 let victim_id = extract_id(event.get_value("userid").ok());
-                let dmg = extract_i32(event.get_value("dmg_health").ok());
                 
+                let raw_dmg = extract_i32(event.get_value("dmg_health").ok());
+                let dmg = sanitize_damage(raw_dmg);
+                
+                if attacker_id == WORLD_ENT_ID || victim_id == WORLD_ENT_ID {
+                    return Ok(());
+                }
+
                 let attacker_team = self.get_player_team(ctx, attacker_id);
                 let victim_team = self.get_player_team(ctx, victim_id);
 
@@ -115,8 +131,9 @@ impl MatchCollector {
         if let Some(p) = self.players.get(&userid) {
             return p.team_num;
         }
-        if let Ok(controller) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
-             if let Ok(FieldValue::Signed32(t)) = controller.get_property_by_name("m_iTeamNum") {
+        
+        if let Ok(entity) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
+             if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
                  return *t;
              }
         }
@@ -132,28 +149,45 @@ impl MatchCollector {
             if let Ok(entity) = ctx.entities().get_by_class_id((userid as i32).try_into().unwrap()) {
                 
                 let class = entity.class();
-                if class.name() == "CCSPlayerController" {
-                        if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
-                            name = n.to_string();
-                        } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_szName") {
-                            name = n.to_string();
-                        }
+                let class_name = class.name();
 
-                        if let Ok(field_val) = entity.get_property_by_name("m_steamID") {
-                            match field_val {
-                                FieldValue::Unsigned64(s) => steam_id = s.to_string(),
-                                FieldValue::Signed32(s) => steam_id = s.to_string(), // Sometimes maps to 32
-                                _ => {}
-                            }
-                        }
+                if class_name == "CCSPlayerController" {
+                    if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_sSanitizedPlayerName") {
+                        name = n.to_string();
+                    } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_iszPlayerName") {
+                        name = n.to_string();
+                    } else if let Ok(FieldValue::String(n)) = entity.get_property_by_name("m_szName") {
+                        name = n.to_string();
+                    }
 
-                        if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
-                            team_num = *t;
+                    if let Ok(field_val) = entity.get_property_by_name("m_steamID") {
+                        match field_val {
+                            FieldValue::Unsigned64(s) => steam_id = s.to_string(),
+                            FieldValue::Signed32(s) => steam_id = s.to_string(),
+                            _ => {}
                         }
                     }
+
+                    if let Ok(FieldValue::Signed32(t)) = entity.get_property_by_name("m_iTeamNum") {
+                        team_num = *t;
+                    }
+                } 
+                else if class_name == "CCSPlayerPawn" {
+                    if let Ok(FieldValue::Unsigned64(handle)) = entity.get_property_by_name("m_hController") {
+                        let controller_idx = handle & 0x7FF;
+                        if let Ok(controller) = ctx.entities().get_by_class_id(controller_idx as i32) {
+                            if let Ok(FieldValue::String(n)) = controller.get_property_by_name("m_sSanitizedPlayerName") {
+                                name = n.to_string();
+                            }
+                            if let Ok(FieldValue::Unsigned64(s)) = controller.get_property_by_name("m_steamID") {
+                                steam_id = s.to_string();
+                            }
+                        }
+                    }
+                }
             }
 
-            if steam_id == "BOT" {
+            if steam_id == "BOT" || steam_id == "0" {
                 steam_id = format!("BOT_{}", name);
             }
 
@@ -162,19 +196,18 @@ impl MatchCollector {
     }
 }
 
-
 fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let file = std::fs::File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
     
     let mut parser = Parser::new(&mmap)?;
     let collector = parser.register_observer::<MatchCollector>();
+    
     parser.run_to_end()?;
 
-    let collector = collector.borrow();
+    let mut collector = collector.borrow_mut();
     
     let mut client = Client::connect(db_url, NoTls)?;
-    
     let mut transaction = client.transaction()?;
 
     let row = transaction.query_one(
@@ -183,13 +216,21 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
     )?;
     let match_id: i32 = row.get(0);
 
+    // Prevent Division by Zero (if scores are 0-0, assume at least 1 round context or skip ADR)
     let total_rounds = (collector.score_ct + collector.score_t).max(1) as f32;
 
     for stats in collector.players.values() {
 
-        if stats.steam_id == "BOT" { continue; }
+        // STRICT IDENTITY FILTERING
+        // 1. Skip the World Entity (65535)
+        // 2. Skip uninitialized bots if they have no stats
+        if stats.steam_id.contains("65535") || stats.name.contains("User 65535") { continue; }
+        if stats.steam_id == "BOT" && stats.kills == 0 && stats.deaths == 0 { continue; }
         
-        let adr = stats.total_damage as f32 / total_rounds;
+        // ADR CALCULATION & SANITIZATION
+        // Ensure strictly positive floating point results
+        let adr_raw = stats.total_damage as f32 / total_rounds;
+        let adr = if adr_raw < 0.0 { 0.0 } else { adr_raw };
         
         let kill_rating = stats.kills as f32 / total_rounds / 0.679;
         let survival_rating = (total_rounds - stats.deaths as f32) / total_rounds / 0.317;
@@ -205,7 +246,6 @@ fn process_demo(path: &str, db_url: &str) -> Result<String, Box<dyn std::error::
 
     Ok(format!("{{ \"success\": true, \"match_id\": {} }}", match_id))
 }
-
 
 #[unsafe(no_mangle)]
 pub extern "C" fn analyze_demo(path_ptr: *const c_char, db_url_ptr: *const c_char) -> *mut c_char {

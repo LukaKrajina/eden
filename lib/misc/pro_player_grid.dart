@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-// --- Data Model ---
 class ProPlayer {
   final String name;
   final String team;
   final String imageUrl;
   final String role;
-  // Config Data
   final String crosshairCode;
   final double sensitivity;
   final int dpi;
@@ -30,7 +28,6 @@ class ProPlayer {
     required this.viewmodel,
   });
 
-  // Generates a mock config file content based on real stats
   String get configContent => """
 // $name CS2 Config (Auto-Generated from Cloud)
 // Team: $team | Role: $role
@@ -71,7 +68,6 @@ echo "Loaded $name Config Successfully"
 """;
 }
 
-// --- Live Database (Synced 2026) ---
 final List<ProPlayer> kProPlayers = [
   ProPlayer(
     name: "s1mple",
@@ -153,7 +149,6 @@ final List<ProPlayer> kProPlayers = [
   ),
 ];
 
-// --- UI Widget ---
 class ProSettingsGrid extends StatelessWidget {
   const ProSettingsGrid({super.key});
 
@@ -218,13 +213,11 @@ class _ProPlayerCardState extends State<_ProPlayerCard> {
   void _triggerSecureView() async {
     setState(() => _isDownloading = true);
 
-    // 1. Simulate Background Download
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
     setState(() => _isDownloading = false);
 
-    // 2. Open Ephemeral Pop-up
     _showConfigDialog();
   }
 
@@ -233,11 +226,9 @@ class _ProPlayerCardState extends State<_ProPlayerCard> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        // Auto-close timer logic
         Timer(const Duration(seconds: 5), () {
           if (Navigator.canPop(ctx)) {
             Navigator.pop(ctx);
-            // 4. "Delete" simulation log
             debugPrint("SECURE_VIEWER: Temporary file for ${widget.player.name} deleted.");
           }
         });
@@ -294,7 +285,6 @@ class _ProPlayerCardState extends State<_ProPlayerCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Avatar Section
           Expanded(
             flex: 4,
             child: Stack(
