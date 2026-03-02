@@ -16,14 +16,13 @@ import 'services/p2p_service.dart';
 import 'services/demo/demo_service.dart';
 import 'services/demo/api_service.dart';
 
-const Color kFaceitDarkBg = Color(0xFF121212);
-const Color kFaceitSurface = Color(0xFF1F1F1F);
-const Color kFaceitOrange = Color(0xFFFF5500);
-const Color kFaceitText = Color(0xFFEEEEEE);
-const Color kFaceitTextDim = Color(0xFFAAAAAA);
-const Color kFaceitBorder = Color(0xFF333333);
+const Color kEdenDarkBg = Color(0xFF121212);
+const Color kEdenSurface = Color(0xFF1F1F1F);
+const Color kEdenOrange = Color.fromARGB(255, 0, 247, 255);
+const Color kEdenText = Color(0xFFEEEEEE);
+const Color kEdenTextDim = Color(0xFFAAAAAA);
+const Color kEdenBorder = Color(0xFF333333);
 
-// --- Global Settings ---
 String g_CS2Path = "";
 String g_dbUser = "postgres";
 String g_DbPassword = "password";
@@ -127,16 +126,16 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: _lgpkg.get("AppTitle"),
           theme: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: kFaceitDarkBg,
-            primaryColor: kFaceitOrange,
-            cardColor: kFaceitSurface,
+            scaffoldBackgroundColor: kEdenDarkBg,
+            primaryColor: kEdenOrange,
+            cardColor: kEdenSurface,
             textTheme: const TextTheme(
-              bodyMedium: TextStyle(color: kFaceitText, fontFamily: 'Roboto'),
-              titleLarge: TextStyle(color: kFaceitText, fontFamily: 'Oswald', fontWeight: FontWeight.bold),
+              bodyMedium: TextStyle(color: kEdenText, fontFamily: 'Roboto'),
+              titleLarge: TextStyle(color: kEdenText, fontFamily: 'Oswald', fontWeight: FontWeight.bold),
             ),
             colorScheme: const ColorScheme.dark(
-              primary: kFaceitOrange,
-              surface: kFaceitSurface,
+              primary: kEdenOrange,
+              surface: kEdenSurface,
             ),
           ),
           home: ServerControlPanel(
@@ -362,8 +361,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _addFriend() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: kFaceitSurface,
-      title: Text(_lgpkg.get("AddFriend"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+      backgroundColor: kEdenSurface,
+      title: Text(_lgpkg.get("AddFriend"), style: const TextStyle(color: kEdenOrange, fontFamily: "Oswald")),
       content: TextField(
         controller: _friendCodeController,
         style: const TextStyle(color: Colors.white),
@@ -372,7 +371,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+          style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
           onPressed: () async {
             if (_friendCodeController.text.isNotEmpty) {
               String res = await widget.p2pService.addFriendByCode(_friendCodeController.text);
@@ -422,7 +421,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     
     bool success = await widget.p2pService.sendEdenCoin(_myPeerID, "SYSTEM_BURN_ADDRESS", amount);
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$amount EDN deducted for $actionName"), backgroundColor: kFaceitOrange));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$amount EDN deducted for $actionName"), backgroundColor: kEdenOrange));
       setState(() {}); 
     } else {
       _showErrorDialog(_lgpkg.get("TransactionFailed"), _lgpkg.get("ProcessDeductionFailed"));
@@ -433,8 +432,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Future<void> _editProfileName() async {
     TextEditingController tempController = TextEditingController(text: _nameController.text);
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: kFaceitSurface,
-      title: Text(_lgpkg.get("ChangeIdentity"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+      backgroundColor: kEdenSurface,
+      title: Text(_lgpkg.get("ChangeIdentity"), style: const TextStyle(color: kEdenOrange, fontFamily: "Oswald")),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -446,7 +445,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+          style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
           onPressed: () async {
             if (await _deductFunds(10.0, "Change Name")) {
               setState(() => _nameController.text = tempController.text);
@@ -478,10 +477,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             width: 350,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: kFaceitSurface,
-              border: Border.all(color: kFaceitOrange, width: 2),
+              color: kEdenSurface,
+              border: Border.all(color: kEdenOrange, width: 2),
               borderRadius: BorderRadius.circular(8),
-              boxShadow: [BoxShadow(color: kFaceitOrange.withOpacity(0.2), blurRadius: 20)],
+              boxShadow: [BoxShadow(color: kEdenOrange.withOpacity(0.2), blurRadius: 20)],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -521,10 +520,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                 const SizedBox(height: 5),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(4)),
+                  decoration: BoxDecoration(color: kEdenOrange, borderRadius: BorderRadius.circular(4)),
                   child: Text("${_lgpkg.get("Level").toUpperCase()} $_level", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
                 ),
-                const Divider(color: kFaceitBorder, height: 30),
+                const Divider(color: kEdenBorder, height: 30),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -555,9 +554,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: kFaceitTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: kEdenTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        SelectableText(value, style: const TextStyle(color: kFaceitOrange, fontSize: 16, fontFamily: "monospace", fontWeight: FontWeight.bold)),
+        SelectableText(value, style: const TextStyle(color: kEdenOrange, fontSize: 16, fontFamily: "monospace", fontWeight: FontWeight.bold)),
         if (copyValue != null) ...[
             const SizedBox(width: 8),
             InkWell(
@@ -567,11 +566,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                   SnackBar(
                     content: Text(_lgpkg.get("CopiedClipboard") ?? "Copied to Clipboard"),
                     duration: const Duration(seconds: 1),
-                    backgroundColor: kFaceitOrange,
+                    backgroundColor: kEdenOrange,
                   )
                 );
               },
-              child: const Icon(Icons.copy, size: 16, color: kFaceitTextDim),
+              child: const Icon(Icons.copy, size: 16, color: kEdenTextDim),
             ),
           ]
       ],
@@ -629,7 +628,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       builder: (BuildContext context) {
         return const Center(
           child: CircularProgressIndicator(
-            color: kFaceitOrange,
+            color: kEdenOrange,
             backgroundColor: Colors.black26,
           ),
         );
@@ -834,7 +833,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _lgpkg.currentLanguage = appLanguageNotifier.value;
 
     return Scaffold(
-      backgroundColor: kFaceitDarkBg,
+      backgroundColor: kEdenDarkBg,
       body: Stack(
         children: [
           Row(
@@ -891,11 +890,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   Widget _buildSidebar() {
     return Container(
-      width: 70, color: kFaceitSurface,
+      width: 70, color: kEdenSurface,
       child: Column(
         children: [
           const SizedBox(height: 20),
-          const Icon(Icons.shield_moon, color: kFaceitOrange, size: 32),
+          const Icon(Icons.shield_moon, color: kEdenOrange, size: 32),
           const SizedBox(height: 30),
           _buildSideIcon(Icons.sports_esports, _currentView == 0, onTap: () => setState(() => _currentView = 0,)),
           _buildSideIcon(Icons.people, _currentView == 1, onTap: () => setState(() => _currentView = 1)),
@@ -919,8 +918,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       onTap: onTap,
       child: Container(
         height: 60, width: 70,
-        decoration: BoxDecoration(border: isActive ? const Border(left: BorderSide(color: kFaceitOrange, width: 3)) : null),
-        child: Icon(icon, color: isActive ? kFaceitText : kFaceitTextDim, size: 24),
+        decoration: BoxDecoration(border: isActive ? const Border(left: BorderSide(color: kEdenOrange, width: 3)) : null),
+        child: Icon(icon, color: isActive ? kEdenText : kEdenTextDim, size: 24),
       ),
     );
   }
@@ -934,10 +933,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
     return Container(
       height: 80, padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(color: kFaceitSurface, border: Border(bottom: BorderSide(color: kFaceitBorder))),
+      decoration: const BoxDecoration(color: kEdenSurface, border: Border(bottom: BorderSide(color: kEdenBorder))),
       child: Row(
         children: [
-          Text(title, style: const TextStyle(color: kFaceitText, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
+          Text(title, style: const TextStyle(color: kEdenText, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
           const SizedBox(width: 40),
           
           if (_currentView == 0) ...[
@@ -975,7 +974,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           const SizedBox(width: 15),
           
           IconButton(
-            icon: const Icon(Icons.account_balance_wallet, color: kFaceitTextDim), 
+            icon: const Icon(Icons.account_balance_wallet, color: kEdenTextDim), 
             onPressed: () => showDialog(
               context: context, 
               builder: (ctx) => WalletWindow(p2pService: widget.p2pService, myPeerID: _myPeerID)
@@ -988,7 +987,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             child: CircleAvatar(
               radius: 18, backgroundColor: Colors.grey[800],
               backgroundImage: _avatarImage != null ? FileImage(_avatarImage!) : null,
-              child: _avatarImage == null ? const Icon(Icons.person, size: 18, color: kFaceitText) : null,
+              child: _avatarImage == null ? const Icon(Icons.person, size: 18, color: kEdenText) : null,
             ),
           ),
         ],
@@ -1008,8 +1007,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       child: Container(
         margin: const EdgeInsets.only(right: 30),
         padding: const EdgeInsets.symmetric(vertical: 26),
-        decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kFaceitOrange, width: 3)) : null),
-        child: Text(_lgpkg.get(key).toUpperCase(), style: TextStyle(color: isActive ? kFaceitOrange : kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+        decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kEdenOrange, width: 3)) : null),
+        child: Text(_lgpkg.get(key).toUpperCase(), style: TextStyle(color: isActive ? kEdenOrange : kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
       ),
     );
   }
@@ -1035,9 +1034,9 @@ Widget _buildFriendList() {
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(_lgpkg.get("FriendsList"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          Text(_lgpkg.get("FriendsList"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+            style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
             icon: const Icon(Icons.person_add),
             label: Text(_lgpkg.get("AddFriend")),
             onPressed: _addFriend,
@@ -1047,7 +1046,7 @@ Widget _buildFriendList() {
       const SizedBox(height: 20),
       Expanded(
         child: _friends.isEmpty 
-        ? Center(child: Text(_lgpkg.get("NoFriendsMsg"), style: const TextStyle(color: kFaceitTextDim)))
+        ? Center(child: Text(_lgpkg.get("NoFriendsMsg"), style: const TextStyle(color: kEdenTextDim)))
         : ListView.builder(
             itemCount: _friends.length,
             itemBuilder: (ctx, i) {
@@ -1081,8 +1080,8 @@ Widget _buildFriendList() {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kFaceitSurface,
-        border: Border.all(color: kFaceitOrange.withOpacity(0.5)),
+        color: kEdenSurface,
+        border: Border.all(color: kEdenOrange.withOpacity(0.5)),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -1093,7 +1092,7 @@ Widget _buildFriendList() {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(friend.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Text("Incoming Friend Request", style: TextStyle(color: kFaceitOrange, fontSize: 12, fontStyle: FontStyle.italic)),
+              const Text("Incoming Friend Request", style: TextStyle(color: kEdenOrange, fontSize: 12, fontStyle: FontStyle.italic)),
             ],
           ),
           const Spacer(),
@@ -1119,8 +1118,8 @@ Widget _buildFriendList() {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kFaceitSurface.withOpacity(0.5),
-        border: Border.all(color: kFaceitBorder),
+        color: kEdenSurface.withOpacity(0.5),
+        border: Border.all(color: kEdenBorder),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -1135,7 +1134,7 @@ Widget _buildFriendList() {
             ],
           ),
           const Spacer(),
-          const Text("PENDING", style: TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+          const Text("PENDING", style: TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         ],
       ),
     );
@@ -1146,8 +1145,8 @@ Widget _buildFriendList() {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: kFaceitSurface,
-      border: Border.all(color: kFaceitBorder),
+      color: kEdenSurface,
+      border: Border.all(color: kEdenBorder),
       borderRadius: BorderRadius.circular(4),
     ),
     child: Row(
@@ -1163,7 +1162,7 @@ Widget _buildFriendList() {
                 decoration: BoxDecoration(
                   color: isOnline ? Colors.greenAccent : Colors.grey,
                   shape: BoxShape.circle,
-                  border: Border.all(color: kFaceitSurface, width: 2)
+                  border: Border.all(color: kEdenSurface, width: 2)
                 ),
               ),
             )
@@ -1180,7 +1179,7 @@ Widget _buildFriendList() {
                 if (isOnline) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(color: kFaceitOrange, borderRadius: BorderRadius.circular(2)),
+                    decoration: BoxDecoration(color: kEdenOrange, borderRadius: BorderRadius.circular(2)),
                     child: Text("${_lgpkg.get("Level").toUpperCase()} ${friend.level}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                   const SizedBox(width: 8),
@@ -1220,7 +1219,7 @@ Widget _buildFriendList() {
               colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
             ),
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: kFaceitBorder),
+            border: Border.all(color: kEdenBorder),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -1228,7 +1227,7 @@ Widget _buildFriendList() {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), color: kFaceitOrange, child: Text(_isSearching ? _lgpkg.get("Searching").toUpperCase() : _lgpkg.get("Lobby"), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), color: kEdenOrange, child: Text(_isSearching ? _lgpkg.get("Searching").toUpperCase() : _lgpkg.get("Lobby"), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white))),
                 const SizedBox(height: 8),
                 Text(_selectedMap.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 40, fontFamily: "Oswald", fontWeight: FontWeight.bold)),
                 Text(_status, style: const TextStyle(color: Colors.white70, letterSpacing: 1.5)),
@@ -1237,7 +1236,7 @@ Widget _buildFriendList() {
           ),
         ),
         const SizedBox(height: 24),
-        Text(_lgpkg.get("TeamRoster"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        Text(_lgpkg.get("TeamRoster"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         const SizedBox(height: 10),
         Expanded(child: _buildDynamicPlayerGrid()),
       ],
@@ -1253,7 +1252,7 @@ Widget _buildFriendList() {
     } else if (_selectedModeTitle == "1V1 HUBS") {
       return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           SizedBox(width: 200, child: _buildPlayerRow(0, true, scale: 1.2)),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 40), child: Text(_lgpkg.get("VS"), style: const TextStyle(fontSize: 40, color: kFaceitOrange, fontFamily: "Oswald"))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 40), child: Text(_lgpkg.get("VS"), style: const TextStyle(fontSize: 40, color: kEdenOrange, fontFamily: "Oswald"))),
           SizedBox(width: 200, child: _buildPlayerRow(1, false, scale: 1.2)),
       ]);
     } else {
@@ -1261,9 +1260,9 @@ Widget _buildFriendList() {
           Expanded(child: Column(children: List.generate(5, (i) => _buildPlayerRow(i, true)))),
           const SizedBox(width: 24),
           Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(_lgpkg.get("VS"), style: TextStyle(color: kFaceitTextDim.withOpacity(0.3), fontSize: 24, fontWeight: FontWeight.bold)),
+            Text(_lgpkg.get("VS"), style: TextStyle(color: kEdenTextDim.withOpacity(0.3), fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            Text(_score, style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
+            Text(_score, style: const TextStyle(color: kEdenOrange, fontWeight: FontWeight.bold)),
           ]),
           const SizedBox(width: 24),
           Expanded(child: Column(children: List.generate(5, (i) => _buildPlayerRow(i, false)))),
@@ -1276,14 +1275,14 @@ Widget _buildFriendList() {
     Widget content = Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(color: kFaceitSurface, border: Border(left: BorderSide(color: isMe ? kFaceitOrange : Colors.transparent, width: 3))),
+      decoration: BoxDecoration(color: kEdenSurface, border: Border(left: BorderSide(color: isMe ? kEdenOrange : Colors.transparent, width: 3))),
       child: Row(
         children: [
           CircleAvatar(radius: 16, backgroundColor: Colors.grey[800], backgroundImage: (isMe && _avatarImage != null) ? FileImage(_avatarImage!) : null, child: (isMe && _avatarImage == null) ? const Icon(Icons.person, size: 16) : null),
           const SizedBox(width: 12),
           if (!compact) ...[
-            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(isMe ? _nameController.text : _lgpkg.get("EmptySlot"), style: TextStyle(color: isMe ? Colors.white : kFaceitTextDim, fontWeight: FontWeight.bold)), if (isMe) Text("Lvl $_level", style: const TextStyle(color: kFaceitOrange, fontSize: 10))]),
-            const Spacer(), if (isMe) const Icon(Icons.check_circle, color: kFaceitOrange, size: 16),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(isMe ? _nameController.text : _lgpkg.get("EmptySlot"), style: TextStyle(color: isMe ? Colors.white : kEdenTextDim, fontWeight: FontWeight.bold)), if (isMe) Text("Lvl $_level", style: const TextStyle(color: kEdenOrange, fontSize: 10))]),
+            const Spacer(), if (isMe) const Icon(Icons.check_circle, color: kEdenOrange, size: 16),
           ]
         ],
       ),
@@ -1300,27 +1299,27 @@ Widget _buildFriendList() {
           onTap: _toggleMatching,
           child: Container(
             height: 60, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _isSearching ? Colors.red[900] : kFaceitOrange, borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: (_isSearching ? Colors.red : kFaceitOrange).withOpacity(0.4), blurRadius: 15, spreadRadius: 1)]),
+            decoration: BoxDecoration(color: _isSearching ? Colors.red[900] : kEdenOrange, borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: (_isSearching ? Colors.red : kEdenOrange).withOpacity(0.4), blurRadius: 15, spreadRadius: 1)]),
             child: Text(_isSearching ? _lgpkg.get("CancelSearch") : _lgpkg.get("Play"), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
           ),
         ),
         const SizedBox(height: 12),
-        OutlinedButton(onPressed: _createMatch, style: OutlinedButton.styleFrom(side: const BorderSide(color: kFaceitBorder), padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))), child: Text(_lgpkg.get("CreateCustomLobby"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold))),
+        OutlinedButton(onPressed: _createMatch, style: OutlinedButton.styleFrom(side: const BorderSide(color: kEdenBorder), padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))), child: Text(_lgpkg.get("CreateCustomLobby"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold))),
         const SizedBox(height: 30),
-        Text(_lgpkg.get("MapSelection"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(_lgpkg.get("MapSelection"), style: const TextStyle(color: kEdenTextDim, fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         Expanded(child: GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.5, crossAxisSpacing: 8, mainAxisSpacing: 8), itemCount: _maps.length, itemBuilder: (ctx, i) {
           bool isSelected = _selectedMap == _maps[i];
-          return InkWell(onTap: () => setState(() => _selectedMap = _maps[i]), child: Container(decoration: BoxDecoration(color: isSelected ? kFaceitOrange : kFaceitSurface, borderRadius: BorderRadius.circular(4), border: Border.all(color: isSelected ? kFaceitOrange : kFaceitBorder)), alignment: Alignment.center, child: Text(_maps[i].replaceAll("de_", "").toUpperCase(), style: TextStyle(color: isSelected ? Colors.white : kFaceitTextDim, fontWeight: FontWeight.bold, fontSize: 12))));
+          return InkWell(onTap: () => setState(() => _selectedMap = _maps[i]), child: Container(decoration: BoxDecoration(color: isSelected ? kEdenOrange : kEdenSurface, borderRadius: BorderRadius.circular(4), border: Border.all(color: isSelected ? kEdenOrange : kEdenBorder)), alignment: Alignment.center, child: Text(_maps[i].replaceAll("de_", "").toUpperCase(), style: TextStyle(color: isSelected ? Colors.white : kEdenTextDim, fontWeight: FontWeight.bold, fontSize: 12))));
         })),
         const SizedBox(height: 20),
-        TextField(controller: _joinController, style: const TextStyle(color: kFaceitText), decoration: InputDecoration(hintText: _lgpkg.get("PasteHubID"), hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kFaceitSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kFaceitOrange), onPressed: _joinGame))),
+        TextField(controller: _joinController, style: const TextStyle(color: kEdenText), decoration: InputDecoration(hintText: _lgpkg.get("PasteHubID"), hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: kEdenSurface, border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide.none), suffixIcon: IconButton(icon: const Icon(Icons.arrow_forward, color: kEdenOrange), onPressed: _joinGame))),
       ],
     );
   }
 
   void _showErrorDialog(String title, String msg) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kFaceitSurface, title: Text(title, style: const TextStyle(color: kFaceitOrange)), content: Text(msg, style: const TextStyle(color: kFaceitText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
+    showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: kEdenSurface, title: Text(title, style: const TextStyle(color: kEdenOrange)), content: Text(msg, style: const TextStyle(color: kEdenText)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("OK")))]));
   }
   
   Widget _buildShopTab(String label, int index) {
@@ -1330,8 +1329,8 @@ Widget _buildFriendList() {
       child: Container(
         margin: const EdgeInsets.only(right: 30),
         padding: const EdgeInsets.symmetric(vertical: 26),
-        decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kFaceitOrange, width: 3)) : null),
-        child: Text(label, style: TextStyle(color: isActive ? kFaceitOrange : kFaceitTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+        decoration: BoxDecoration(border: isActive ? const Border(bottom: BorderSide(color: kEdenOrange, width: 3)) : null),
+        child: Text(label, style: TextStyle(color: isActive ? kEdenOrange : kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
       ),
     );
   }
@@ -1362,13 +1361,13 @@ Widget _buildFriendList() {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: kFaceitSurface,
-            title: const Text("Select Item to Sell", style: TextStyle(color: kFaceitOrange)),
+            backgroundColor: kEdenSurface,
+            title: const Text("Select Item to Sell", style: TextStyle(color: kEdenOrange)),
             content: SizedBox(
               width: 500, height: 400,
               child: Column(
                 children: [
-                  if(_loading) const LinearProgressIndicator(color: kFaceitOrange),
+                  if(_loading) const LinearProgressIndicator(color: kEdenOrange),
                   Expanded(
                     child: GridView.builder(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1381,8 +1380,8 @@ Widget _buildFriendList() {
                           onTap: () => setDialogState(() => _selectedIndex = i),
                           child: Container(
                             decoration: BoxDecoration(
-                              border: Border.all(color: selected ? kFaceitOrange : kFaceitBorder, width: selected ? 2 : 1),
-                              color: kFaceitSurface,
+                              border: Border.all(color: selected ? kEdenOrange : kEdenBorder, width: selected ? 2 : 1),
+                              color: kEdenSurface,
                             ),
                             child: Column(
                               children: [
@@ -1426,7 +1425,7 @@ Widget _buildFriendList() {
             ),
             actions: [
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+                style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
                 onPressed: () async {
                     if(_selectedIndex == -1 || priceCtrl.text.isEmpty) return;
                     
@@ -1463,7 +1462,7 @@ Widget _buildFriendList() {
                Row(
                  children: [
                    IconButton(
-                     icon: const Icon(Icons.refresh, color: kFaceitOrange), 
+                     icon: const Icon(Icons.refresh, color: kEdenOrange), 
                      onPressed: _refreshAuctions,
                      tooltip: "Sync with Blockchain",
                    ),
@@ -1490,7 +1489,7 @@ Widget _buildFriendList() {
                   children: [
                     const Icon(Icons.wifi_tethering_off, size: 64, color: Colors.white10),
                     const SizedBox(height: 16),
-                    Text("No active listings found on the chain.", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5))),
+                    Text("No active listings found on the chain.", style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
                   ],
                 )
               )
@@ -1515,8 +1514,8 @@ Widget _buildFriendList() {
 
                   return Container(
                     decoration: BoxDecoration(
-                      color: kFaceitSurface,
-                      border: Border.all(color: isMyItem ? Colors.green.withOpacity(0.5) : kFaceitBorder),
+                      color: kEdenSurface,
+                      border: Border.all(color: isMyItem ? Colors.green.withOpacity(0.5) : kEdenBorder),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Column(
@@ -1544,7 +1543,7 @@ Widget _buildFriendList() {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text("${item['price']} EDN", style: const TextStyle(color: kFaceitOrange, fontWeight: FontWeight.bold)),
+                                  Text("${item['price']} EDN", style: const TextStyle(color: kEdenOrange, fontWeight: FontWeight.bold)),
                                   if(isMyItem) const Text("YOU", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
                                 ],
                               ),
@@ -1557,7 +1556,7 @@ Widget _buildFriendList() {
                                     child: const Text("LISTED", style: TextStyle(color: Colors.grey))
                                   )
                                 : ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+                                    style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
                                     onPressed: () async {
                                       String res = await widget.p2pService.buyItem(
                                         item['seller'], // Real Seller ID
@@ -1606,7 +1605,7 @@ Widget _buildBettingContent() {
           children: [
             const Icon(Icons.sports_esports_outlined, size: 64, color: Colors.white10),
             const SizedBox(height: 16),
-            Text("No live matches found.", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5))),
+            Text("No live matches found.", style: TextStyle(color: kEdenTextDim.withOpacity(0.5))),
             const SizedBox(height: 8),
             const Text("Servers broadcast automatically when live.", style: TextStyle(color: Colors.grey, fontSize: 10)),
           ],
@@ -1642,8 +1641,8 @@ Widget _buildBettingContent() {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: kFaceitSurface,
-            border: Border.all(color: kFaceitBorder),
+            color: kEdenSurface,
+            border: Border.all(color: kEdenBorder),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Column(
@@ -1678,7 +1677,7 @@ Widget _buildBettingContent() {
                   ),
                 ],
               ),
-              const Divider(color: kFaceitBorder, height: 24),
+              const Divider(color: kEdenBorder, height: 24),
               Row(
                 children: [
                   SizedBox(
@@ -1728,7 +1727,7 @@ Widget _buildBettingContent() {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return Dialog(
-            backgroundColor: kFaceitSurface, 
+            backgroundColor: kEdenSurface, 
             child: Container(
               width: 400, 
               padding: const EdgeInsets.all(24), 
@@ -1745,8 +1744,8 @@ Widget _buildBettingContent() {
                     controller: _cs2PathController, 
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
                     ),
                   ), 
                   const SizedBox(height: 20),
@@ -1757,8 +1756,8 @@ Widget _buildBettingContent() {
                       controller: _steamIDKeyController, 
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
-                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
                       ),
                     ), 
                     const SizedBox(height: 20),
@@ -1770,8 +1769,8 @@ Widget _buildBettingContent() {
                       obscureText: true,
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
-                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
                       ),
                     ), 
                     const SizedBox(height: 20),
@@ -1782,8 +1781,8 @@ Widget _buildBettingContent() {
                     controller: _dbUserController, 
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -1795,8 +1794,8 @@ Widget _buildBettingContent() {
                     obscureText: true,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitBorder)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
                     ),
                   ), 
                   const SizedBox(height: 20),
@@ -1806,13 +1805,13 @@ Widget _buildBettingContent() {
                   const SizedBox(height: 5),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(border: Border.all(color: kFaceitBorder), borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(border: Border.all(color: kEdenBorder), borderRadius: BorderRadius.circular(4)),
                     child: DropdownButton<String>(
                       value: tempLanguage,
-                      dropdownColor: kFaceitSurface,
+                      dropdownColor: kEdenSurface,
                       isExpanded: true,
                       underline: const SizedBox(),
-                      icon: const Icon(Icons.language, color: kFaceitOrange),
+                      icon: const Icon(Icons.language, color: kEdenOrange),
                       style: const TextStyle(color: Colors.white),
                       items: const [
                         DropdownMenuItem(value: "English", child: Text("English")),
@@ -1832,11 +1831,11 @@ Widget _buildBettingContent() {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
-                        child: Text(_lgpkg.get("Cancel"), style: const TextStyle(color: kFaceitTextDim))
+                        child: Text(_lgpkg.get("Cancel"), style: const TextStyle(color: kEdenTextDim))
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange), 
+                        style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange), 
                         onPressed: (){ 
                           // 1. Update Global Settings
                           g_CS2Path = _cs2PathController.text;
@@ -1883,8 +1882,8 @@ Widget _buildBettingContent() {
         Container(
           width: 300,
           decoration: BoxDecoration(
-            color: kFaceitSurface,
-            border: Border.all(color: kFaceitBorder),
+            color: kEdenSurface,
+            border: Border.all(color: kEdenBorder),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Column(
@@ -1894,15 +1893,15 @@ Widget _buildBettingContent() {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_lgpkg.get("MATCH HISTORY"), style: const TextStyle(color: kFaceitTextDim, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
+                    Text(_lgpkg.get("MATCH HISTORY"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, fontFamily: "Oswald")),
                     IconButton(
-                      icon: const Icon(Icons.refresh, size: 16, color: kFaceitOrange),
+                      icon: const Icon(Icons.refresh, size: 16, color: kEdenOrange),
                       onPressed: _fetchMatches,
                     )
                   ],
                 ),
               ),
-              const Divider(height: 1, color: kFaceitBorder),
+              const Divider(height: 1, color: kEdenBorder),
               Expanded(
                 child: ListView.builder(
                   itemCount: _matchHistory.length,
@@ -1913,8 +1912,8 @@ Widget _buildBettingContent() {
                       onTap: () => _fetchMatchDetails(match['id']),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: isSelected ? kFaceitSurface.withOpacity(0.8) : null,
-                          border: Border(left: BorderSide(color: isSelected ? kFaceitOrange : Colors.transparent, width: 3)),
+                          color: isSelected ? kEdenSurface.withOpacity(0.8) : null,
+                          border: Border(left: BorderSide(color: isSelected ? kEdenOrange : Colors.transparent, width: 3)),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         child: Row(
@@ -1957,7 +1956,7 @@ Widget _buildBettingContent() {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: kFaceitOrange,
+                      backgroundColor: kEdenOrange,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     icon: const Icon(Icons.upload_file),
@@ -1989,9 +1988,9 @@ Widget _buildBettingContent() {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.analytics_outlined, size: 64, color: kFaceitTextDim),
+          const Icon(Icons.analytics_outlined, size: 64, color: kEdenTextDim),
           const SizedBox(height: 16),
-          Text("SELECT A MATCH", style: TextStyle(color: kFaceitTextDim.withOpacity(0.5), fontSize: 24, fontFamily: "Oswald")),
+          Text("SELECT A MATCH", style: TextStyle(color: kEdenTextDim.withOpacity(0.5), fontSize: 24, fontFamily: "Oswald")),
           const SizedBox(height: 8),
           const Text("Select a match from the left to view detailed analytics", style: TextStyle(color: Colors.grey)),
         ],
@@ -2001,7 +2000,7 @@ Widget _buildBettingContent() {
 
   Widget _buildScoreboard() {
     if (_isLoadingStats) {
-      return const Center(child: CircularProgressIndicator(color: kFaceitOrange));
+      return const Center(child: CircularProgressIndicator(color: kEdenOrange));
     }
 
     return Column(
@@ -2016,7 +2015,7 @@ Widget _buildBettingContent() {
                 OutlinedButton(onPressed: (){}, child: const Text("DOWNLOAD DEMO")),
                 const SizedBox(width: 10),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: kFaceitSurface),
+                  style: ElevatedButton.styleFrom(backgroundColor: kEdenSurface),
                   onPressed: (){}, 
                   child: const Text("WATCH ROOM")
                 ),
@@ -2029,7 +2028,7 @@ Widget _buildBettingContent() {
         // Table Header
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          color: kFaceitSurface,
+          color: kEdenSurface,
           child: const Row(
             children: [
               Expanded(flex: 3, child: Text("PLAYER", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
@@ -2052,7 +2051,7 @@ Widget _buildBettingContent() {
               bool positive = kd >= 1.0;
 
               return Container(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kFaceitBorder))),
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kEdenBorder))),
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                 child: Row(
                   children: [
@@ -2147,8 +2146,8 @@ class _WalletWindowState extends State<WalletWindow> {
     showDialog(
       context: context, 
       builder: (ctx) => AlertDialog(
-        backgroundColor: kFaceitSurface,
-        title: Text(_lgpkg.get("SendEDN"), style: const TextStyle(color: kFaceitOrange, fontFamily: "Oswald")),
+        backgroundColor: kEdenSurface,
+        title: Text(_lgpkg.get("SendEDN"), style: const TextStyle(color: kEdenOrange, fontFamily: "Oswald")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2169,7 +2168,7 @@ class _WalletWindowState extends State<WalletWindow> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(_lgpkg.get("Cancel"))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange),
+            style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange),
             onPressed: () async {
               double amt = double.tryParse(amountCtrl.text) ?? 0.0;
               if (recipientCtrl.text.isNotEmpty && amt > 0) {
@@ -2199,7 +2198,7 @@ class _WalletWindowState extends State<WalletWindow> {
     showDialog(
       context: context, 
       builder: (ctx) => AlertDialog(
-        backgroundColor: kFaceitSurface,
+        backgroundColor: kEdenSurface,
         title: Text(_lgpkg.get("ReceiveEDN"), style: const TextStyle(color: Colors.greenAccent, fontFamily: "Oswald")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2242,15 +2241,15 @@ class _WalletWindowState extends State<WalletWindow> {
         height: 280, 
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: kFaceitSurface, 
-          border: Border.all(color: kFaceitOrange), 
+          color: kEdenSurface, 
+          border: Border.all(color: kEdenOrange), 
           borderRadius: BorderRadius.circular(4)
         ),
         child: Column(
           children: [
             Text(_lgpkg.get("EdenWallet"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const Spacer(),
-            Text("${_balance.toStringAsFixed(2)} EDN", style: const TextStyle(color: kFaceitOrange, fontSize: 32, fontFamily: "Oswald")),
+            Text("${_balance.toStringAsFixed(2)} EDN", style: const TextStyle(color: kEdenOrange, fontSize: 32, fontFamily: "Oswald")),
             const SizedBox(height: 8),
             Text(_lgpkg.get("LiveBalance"), style: const TextStyle(color: Colors.grey, fontSize: 10)),
             const Spacer(),
@@ -2258,7 +2257,7 @@ class _WalletWindowState extends State<WalletWindow> {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: kFaceitOrange, foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange, foregroundColor: Colors.white),
                     onPressed: _showSendDialog,
                     child: Text(_lgpkg.get("Send")),
                   ),
@@ -2364,13 +2363,13 @@ class _TradeOverlayState extends State<TradeOverlay> {
       insetPadding: const EdgeInsets.all(20),
       child: Container(
         width: 800, height: 500,
-        decoration: BoxDecoration(color: const Color(0xFF1E1E1E), border: Border.all(color: kFaceitBorder), borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: const Color(0xFF1E1E1E), border: Border.all(color: kEdenBorder), borderRadius: BorderRadius.circular(8)),
         child: Column(
           children: [
             // Header
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(color: Color(0xFF121212), border: Border(bottom: BorderSide(color: kFaceitBorder))),
+              decoration: const BoxDecoration(color: Color(0xFF121212), border: Border(bottom: BorderSide(color: kEdenBorder))),
               child: Center(child: Text(_lgpkg.get("SecureTradeOffer"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2))),
             ),
             
@@ -2390,7 +2389,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           const SizedBox(height: 8),
                           Text("${_lgpkg.get("Holdings")}: ${_myBalance.toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.grey)),
                           const SizedBox(height: 20),
-                          Text(_lgpkg.get("EstRemaining"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12)),
+                          Text(_lgpkg.get("EstRemaining"), style: const TextStyle(color: kEdenTextDim, fontSize: 12)),
                           Text("${(_myBalance - tradeAmount).toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -2413,7 +2412,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           child: const Icon(Icons.arrow_forward, color: Colors.white, size: 30),
                         ),
                         const SizedBox(height: 20),
-                        Text(_lgpkg.get("TradingAmount"), style: const TextStyle(color: kFaceitTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
+                        Text(_lgpkg.get("TradingAmount"), style: const TextStyle(color: kEdenTextDim, fontSize: 10, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: 100,
@@ -2423,8 +2422,8 @@ class _TradeOverlayState extends State<TradeOverlay> {
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                             decoration: const InputDecoration(
-                              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange)),
-                              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kFaceitOrange, width: 2)),
+                              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
+                              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange, width: 2)),
                               suffixText: "EDN"
                             ),
                             onChanged: (v) => setState((){}),
@@ -2447,7 +2446,7 @@ class _TradeOverlayState extends State<TradeOverlay> {
                           const SizedBox(height: 8),
                           Text("${_lgpkg.get("Holdings")}: ${widget.friend.edn} EDN", style: const TextStyle(color: Colors.grey)),
                           const SizedBox(height: 20),
-                          Text(_lgpkg.get("EstTotal"), style: const TextStyle(color: kFaceitTextDim, fontSize: 12)),
+                          Text(_lgpkg.get("EstTotal"), style: const TextStyle(color: kEdenTextDim, fontSize: 12)),
                           Text("${(widget.friend.edn + tradeAmount).toStringAsFixed(2)} EDN", style: const TextStyle(color: Colors.greenAccent, fontSize: 24, fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -2506,7 +2505,6 @@ class _TradeOverlayState extends State<TradeOverlay> {
   }
 }
 
-// --- Companion Window ---
 class CompanionWindow extends StatefulWidget {
   final VoidCallback onMinimize;
   final P2PService p2pService;
@@ -2529,11 +2527,11 @@ class _CompanionWindowState extends State<CompanionWindow> {
         onPanUpdate: (d) => setState(() => position += d.delta),
         child: Container(
           width: 260, padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: kFaceitSurface.withOpacity(0.95), border: Border.all(color: kFaceitOrange), borderRadius: BorderRadius.circular(4), boxShadow: [const BoxShadow(color: Colors.black54, blurRadius: 10)]),
+          decoration: BoxDecoration(color: kEdenSurface.withOpacity(0.95), border: Border.all(color: kEdenOrange), borderRadius: BorderRadius.circular(4), boxShadow: [const BoxShadow(color: Colors.black54, blurRadius: 10)]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [const Icon(Icons.shield, color: kFaceitOrange, size: 16), const SizedBox(width: 8), Text(_lgpkg.get("EdenACActive"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)), const Spacer(), InkWell(onTap: widget.onMinimize, child: const Icon(Icons.close, color: Colors.grey, size: 16))]),
+              Row(children: [const Icon(Icons.shield, color: kEdenOrange, size: 16), const SizedBox(width: 8), Text(_lgpkg.get("EdenACActive"), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)), const Spacer(), InkWell(onTap: widget.onMinimize, child: const Icon(Icons.close, color: Colors.grey, size: 16))]),
               const SizedBox(height: 8),
               StreamBuilder(
                 stream: Stream.periodic(const Duration(seconds: 1)),
