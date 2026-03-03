@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	lp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -258,9 +260,20 @@ func VerifyTransaction(tx Transaction) bool {
 		return false
 	}
 
-	derivedAddress := hex.EncodeToString(tx.PublicKey)
-	if derivedAddress != tx.Sender {
-		fmt.Printf("[Crypto] FRAUD: Public Key %s does not belong to Sender %s\n", derivedAddress, tx.Sender)
+	lp2pPubKey, err := lp2pcrypto.UnmarshalECDSAPublicKey(pubKeyBytes)
+	if err != nil {
+		fmt.Printf("[Crypto] Failed to unmarshal libp2p public key for %s\n", tx.ID)
+		return false
+	}
+
+	derivedPeerID, err := peer.IDFromPublicKey(lp2pPubKey)
+	if err != nil {
+		fmt.Printf("[Crypto] Failed to derive Peer ID for %s\n", tx.ID)
+		return false
+	}
+
+	if derivedPeerID.String() != tx.Sender {
+		fmt.Printf("[Crypto] FRAUD: Public Key mathematically belongs to %s, but Sender claims to be %s\n", derivedPeerID.String(), tx.Sender)
 		return false
 	}
 
