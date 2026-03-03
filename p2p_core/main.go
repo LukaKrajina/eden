@@ -279,6 +279,7 @@ func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
 		Payload:   payload,
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	if err := SignTransaction(myPrivKey, &tx); err != nil {
@@ -521,6 +522,7 @@ func StartGSIServer() {
 				Payload:   votePayload,
 				Timestamp: time.Now().Unix(),
 				PublicKey: pubKeyBytes,
+				Nonce:     GetNextNonce(h.ID().String()),
 			}
 
 			SignTransaction(myPrivKey, &tx)
@@ -592,6 +594,12 @@ func DecryptFriendCode(code string) (string, error) {
 	return string(plaintext), nil
 }
 
+func GetNextNonce(sender string) uint64 {
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+	return EdenChain.AccountNonces[sender] + 1
+}
+
 //export GenerateAndRegisterFriendCode
 func GenerateAndRegisterFriendCode() *C.char {
 	code := EncryptFriendCode(h.ID().String())
@@ -610,6 +618,7 @@ func GenerateAndRegisterFriendCode() *C.char {
 		Payload:   code,
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	SignTransaction(myPrivKey, &tx)
@@ -1117,6 +1126,7 @@ func StartMatch(matchID *C.char, playerList *C.char) *C.char {
 		Payload:   fmt.Sprintf("%s|%s", mID, roster),
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	if !strings.Contains(roster, h.ID().String()) {
@@ -1251,6 +1261,7 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 		Payload:   fmt.Sprintf("%s|%d", aID, dur),
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	newBlock := Block{
@@ -1321,6 +1332,7 @@ func TriggerExpirationCleanup() *C.char {
 			Payload:   auctionID,
 			Timestamp: time.Now().Unix(),
 			PublicKey: pubKeyBytes,
+			Nonce:     GetNextNonce(h.ID().String()),
 		}
 
 		newBlock := Block{
@@ -1360,6 +1372,7 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 		Payload:   fmt.Sprintf("%s:%s", mID, tm),
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	newBlock := Block{
@@ -1397,6 +1410,7 @@ func SendTransaction(receiver *C.char, amount C.double) C.int {
 		Payload:   "",
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	err = SignTransaction(myPrivKey, &tx)
@@ -1479,6 +1493,7 @@ func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 		Payload:   C.GoString(assetID),
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	newBlock := Block{
@@ -1865,6 +1880,7 @@ func RegisterMySteamID(steamID *C.char) *C.char {
 		Payload:   sID,
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
 	if err := SignTransaction(myPrivKey, &tx); err != nil {
