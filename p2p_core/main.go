@@ -156,6 +156,7 @@ type LiveMatchSession struct {
 	TTeamName   string
 	SteamRoster map[string]string
 	Scores      map[string]int
+	Ratings     map[string]float64
 }
 
 type FriendInfo struct {
@@ -394,6 +395,7 @@ func StartGSIServer() {
 					MatchID:     currentMatchID,
 					SteamRoster: make(map[string]string),
 					Scores:      make(map[string]int),
+					Ratings:     make(map[string]float64),
 				}
 				fmt.Println("[Match] New Session Initialized")
 			}
@@ -420,9 +422,20 @@ func StartGSIServer() {
 
 					matchStats := pMap["match_stats"].(map[string]interface{})
 					score := int(matchStats["score"].(float64))
+					kills := int(matchStats["kills"].(float64))
+					assists := int(matchStats["assists"].(float64))
+					deaths := int(matchStats["deaths"].(float64))
+
+					roundKills := 0
+					if stateMap, ok := pMap["state"].(map[string]interface{}); ok {
+						if rk, ok := stateMap["round_kills"].(float64); ok {
+							roundKills = int(rk)
+						}
+					}
 
 					activeSession.SteamRoster[steamID] = team
 					activeSession.Scores[steamID] = score
+					activeSession.Ratings[steamID] = calculateRating(kills, deaths, assists, roundKills)
 
 					if team == "CT" {
 						if score > topCTScore {
