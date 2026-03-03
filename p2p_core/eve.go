@@ -159,6 +159,8 @@ func InitializeChain(dbPath string) {
 		ActiveEscrows:  make(map[string]*Escrow),
 		AccountNonces:  make(map[string]uint64),
 		MatchVotes:     make(map[string]map[string]string),
+		MatchSessions:  make(map[string]MatchSessionInfo),
+		FriendRegistry: make(map[string]string),
 		Database:       db,
 		DBPath:         dbPath,
 	}

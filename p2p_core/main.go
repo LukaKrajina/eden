@@ -1034,8 +1034,15 @@ func TriggerSync(pID peer.ID) {
 		EdenChain.Database.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)), nil)
 
 		EdenChain.Balances = make(map[string]float64)
+		EdenChain.Profiles = make(map[string]*UserProfile)
+		EdenChain.SteamToPeerID = make(map[string]string)
 		EdenChain.ActiveAuctions = make(map[string]*Auction)
 		EdenChain.ActivePools = make(map[string]*BettingPool)
+		EdenChain.ActiveEscrows = make(map[string]*Escrow)
+		EdenChain.AccountNonces = make(map[string]uint64)
+		EdenChain.MatchSessions = make(map[string]MatchSessionInfo)
+		EdenChain.MatchVotes = make(map[string]map[string]string)
+		EdenChain.FriendRegistry = make(map[string]string)
 
 		validBlocks := EdenChain.GetBlocksRange(0, ancestor+1)
 		for _, b := range validBlocks {
