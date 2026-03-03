@@ -516,7 +516,8 @@ func StartGSIServer() {
 
 			var alignmentParts []string
 			for sID, team := range activeSession.SteamRoster {
-				alignmentParts = append(alignmentParts, fmt.Sprintf("%s=%s", sID, team))
+				rating := activeSession.Ratings[sID]
+				alignmentParts = append(alignmentParts, fmt.Sprintf("%s=%s=%.2f", sID, team, rating))
 			}
 			alignmentStr := strings.Join(alignmentParts, ",")
 

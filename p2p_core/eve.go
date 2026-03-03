@@ -488,7 +488,22 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 					bc.Balances[bTx.Receiver] += bTx.Amount
 				}
 
-				bc.DistributePlayerXP(matchID, session.Roster, votedWinner, votedMVP)
+				playerRatings := make(map[string]float64)
+				if len(parts) > 3 {
+					alignments := strings.Split(parts[3], ",")
+					for _, align := range alignments {
+						ap := strings.Split(align, "=")
+						if len(ap) == 3 {
+							steamID := ap[0]
+							rating, _ := strconv.ParseFloat(ap[2], 64)
+							if peerID, ok := bc.SteamToPeerID[steamID]; ok {
+								playerRatings[peerID] = rating
+							}
+						}
+					}
+				}
+
+				bc.DistributePlayerXP(matchID, session.Roster, votedWinner, votedMVP, playerRatings)
 
 				delete(bc.MatchSessions, matchID)
 				delete(bc.MatchVotes, matchID)
@@ -498,18 +513,28 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 	return true
 }
 
-func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string) {
+func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string, playerRatings map[string]float64) {
 	mvpPeerID := ""
 	if pid, ok := bc.SteamToPeerID[mvpSteamID]; ok {
 		mvpPeerID = pid
 	}
 
+	var teamTotalRating float64
+	for _, peerID := range roster {
+		teamTotalRating += playerRatings[peerID]
+	}
+
+	teamAvg := 1.0
+	if len(roster) > 0 && teamTotalRating > 0 {
+		teamAvg = teamTotalRating / float64(len(roster))
+	}
+
 	for _, peerID := range roster {
 		isMVP := (peerID == mvpPeerID)
 
-		rating := 1.0
-		if isMVP {
-			rating = 2.0
+		rating := playerRatings[peerID]
+		if rating == 0 {
+			rating = 1.0
 		}
 
 		payloadMap := map[string]interface{}{
@@ -522,7 +547,7 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 			fmt.Printf("[XP] Processing Virtual Update: %s\n", string(data))
 		}
 
-		bc.processMatchProgression(peerID, isMVP, rating, 1.0)
+		bc.processMatchProgression(peerID, isMVP, rating, teamAvg)
 	}
 }
 
