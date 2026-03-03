@@ -265,6 +265,11 @@ func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
 
 	payload := fmt.Sprintf("%s|%s", user, url)
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("prof_%d", time.Now().UnixNano()),
 		Type:      TxTypeUpdateProfile,
@@ -273,6 +278,7 @@ func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
 		Amount:    0,
 		Payload:   payload,
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	if err := SignTransaction(myPrivKey, &tx); err != nil {
@@ -504,6 +510,8 @@ func StartGSIServer() {
 
 			votePayload := fmt.Sprintf("%s:%s:%s:%s", currentMatchID, myVerdict, mvpSteamID, alignmentStr)
 
+			pubKeyBytes, _ := hex.DecodeString(myPubKey)
+
 			tx := Transaction{
 				ID:        fmt.Sprintf("vote_%s_%s", currentMatchID, h.ID().String()),
 				Type:      TxTypeWitness,
@@ -512,6 +520,7 @@ func StartGSIServer() {
 				Amount:    0,
 				Payload:   votePayload,
 				Timestamp: time.Now().Unix(),
+				PublicKey: pubKeyBytes,
 			}
 
 			SignTransaction(myPrivKey, &tx)
@@ -587,6 +596,11 @@ func DecryptFriendCode(code string) (string, error) {
 func GenerateAndRegisterFriendCode() *C.char {
 	code := EncryptFriendCode(h.ID().String())
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("reg_%d", time.Now().UnixNano()),
 		Type:      TxTypeRegisterFriend,
@@ -595,6 +609,7 @@ func GenerateAndRegisterFriendCode() *C.char {
 		Amount:    0,
 		Payload:   code,
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	SignTransaction(myPrivKey, &tx)
@@ -1222,6 +1237,11 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 	p := float64(price)
 	dur := int(durationSeconds)
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("list_%d", time.Now().UnixNano()),
 		Type:      TxTypeList,
@@ -1230,6 +1250,7 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 		Amount:    p,
 		Payload:   fmt.Sprintf("%s|%d", aID, dur),
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	newBlock := Block{
@@ -1284,6 +1305,11 @@ func TriggerExpirationCleanup() *C.char {
 		return C.CString("Nothing to clean")
 	}
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	count := 0
 	for _, auctionID := range toClose {
 		tx := Transaction{
@@ -1294,6 +1320,7 @@ func TriggerExpirationCleanup() *C.char {
 			Amount:    0,
 			Payload:   auctionID,
 			Timestamp: time.Now().Unix(),
+			PublicKey: pubKeyBytes,
 		}
 
 		newBlock := Block{
@@ -1319,6 +1346,11 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 	tm := C.GoString(team)
 	amt := float64(amount)
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("bet_%d", time.Now().UnixNano()),
 		Type:      TxTypeBet,
@@ -1327,6 +1359,7 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 		Amount:    amt,
 		Payload:   fmt.Sprintf("%s:%s", mID, tm),
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	newBlock := Block{
@@ -1358,7 +1391,7 @@ func SendTransaction(receiver *C.char, amount C.double) C.int {
 	tx := Transaction{
 		ID:        fmt.Sprintf("tx_%d", time.Now().UnixNano()),
 		Type:      TxTypeTransfer,
-		Sender:    myPubKey,
+		Sender:    h.ID().String(),
 		Receiver:  r,
 		Amount:    amt,
 		Payload:   "",
@@ -1431,6 +1464,12 @@ func SendFriendSignal(peerIDStr string, signalType string) {
 
 //export CreateEscrow
 func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
+
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("escrow_%d", time.Now().UnixNano()),
 		Type:      TxTypeEscrow,
@@ -1439,6 +1478,7 @@ func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 		Amount:    float64(price),
 		Payload:   C.GoString(assetID),
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	newBlock := Block{
@@ -1811,6 +1851,11 @@ func RegisterMySteamID(steamID *C.char) *C.char {
 		return C.CString("Already Registered")
 	}
 
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
 	tx := Transaction{
 		ID:        fmt.Sprintf("reg_steam_%d", time.Now().UnixNano()),
 		Type:      TxTypeRegisterSteamID,
@@ -1819,6 +1864,7 @@ func RegisterMySteamID(steamID *C.char) *C.char {
 		Amount:    0,
 		Payload:   sID,
 		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
 	}
 
 	if err := SignTransaction(myPrivKey, &tx); err != nil {
