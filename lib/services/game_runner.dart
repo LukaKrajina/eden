@@ -7,6 +7,15 @@ class GameRunner {
   Process? _serverProcess;
   Process? _clientProcess;
 
+  Future<void> _ensureSteamAppId(String exePath) async {
+    final exeDir = p.dirname(exePath);
+    final appIdFile = File(p.join(exeDir, 'steam_appid.txt'));
+    
+    if (!await appIdFile.exists()) {
+      await appIdFile.writeAsString('730');
+    }
+  }
+
   Future<void> startServer(
       String gamePath,
       String gameVersion,
@@ -26,7 +35,10 @@ class GameRunner {
       serverExe = p.join(gamePath, 'csgo.exe');
     }
     
+    await _ensureSteamAppId(serverExe);
+
     final args = [
+      '-steam',
       '-dedicated',
       '-usercon',
       '-console',
@@ -82,8 +94,10 @@ class GameRunner {
     } else {
       clientExe = p.join(gamePath, 'csgo.exe');
     }
+
+    await _ensureSteamAppId(clientExe);
     
-    final args = ['-console','-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
+    final args = ['-steam','-console','-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
 
     print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");
     
