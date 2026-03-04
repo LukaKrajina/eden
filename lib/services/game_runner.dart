@@ -34,8 +34,6 @@ class GameRunner {
       serverExe = p.join(gamePath, 'csgo.exe');
     }
     
-    await _ensureSteamAppId(serverExe);
-
     final args = [
       '-dedicated',
       '-insecure',
@@ -89,14 +87,13 @@ class GameRunner {
   Future<void> startClient(String gamePath, String gameVersion, String hostIP, String playerName) async {
     String clientExe;
     if (gameVersion == "CS2") {
-      clientExe = p.join(gamePath, 'game', 'bin', 'win64', 'cs2.exe');
+      clientExe = "730";
     } else {
-      clientExe = p.join(gamePath, 'csgo.exe');
+      clientExe = "745";
     }
 
-    await _ensureSteamAppId(clientExe);
 
-    final steamUri = 'steam://run/730//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
+    final steamUri = 'steam://run/$clientExe//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
 
     print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");
     
@@ -129,10 +126,13 @@ class GameRunner {
     }
   }
 
-  void stopClient() {
+  void stopClient(String gameVersion) {
     if (Platform.isWindows) {
-      Process.run('taskkill', ['/F', '/T', '/IM', 'cs2.exe']);
-      Process.run('taskkill', ['/F', '/T', '/IM', 'csgo.exe']);
+      if (gameVersion == "CS2") {
+        Process.run('taskkill', ['/F', '/T', '/IM', 'cs2.exe']);
+      } else {
+        Process.run('taskkill', ['/F', '/T', '/IM', 'csgo.exe']);
+      }
     }
   }
 }
