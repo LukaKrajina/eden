@@ -24,6 +24,8 @@ const Color kEdenTextDim = Color(0xFFAAAAAA);
 const Color kEdenBorder = Color(0xFF333333);
 
 String g_CS2Path = "";
+String g_CSGOPath = "";
+String g_selectedGame = "CS2";
 String g_dbUser = "postgres";
 String g_DbPassword = "password";
 String g_steamIDKey = "";
@@ -72,6 +74,8 @@ Future<void> _loadSettings() async {
       final content = await file.readAsString();
       final map = jsonDecode(content);
       g_CS2Path = map['cs2_path'] ?? "";
+      g_CSGOPath = map['csgo_path'] ?? "";
+      g_selectedGame = map['selected_game'] ?? "CS2";
       g_dbUser = map['db_user'] ?? "postgres";
       g_DbPassword = map['db_password'] ?? "password";
       g_steamIDKey = map['steam_id_key'] ?? "";
@@ -88,12 +92,17 @@ Future<void> _saveSettings() async {
     final file = File('eden_config.json');
     final map = {
       'cs2_path': g_CS2Path,
+      'csgo_path': g_CSGOPath,
+      'selected_game': g_selectedGame,
       'db_user': g_dbUser,
       'db_password': g_DbPassword,
       'steam_id_key': g_steamIDKey,
       'steam_api_key': g_steamApiKey,
       'language': appLanguageNotifier.value,
     };
+    g_CS2Path = map['cs2_path'] ?? "";
+    g_CSGOPath = map['csgo_path'] ?? "";
+    g_selectedGame = map['selected_game'] ?? "CS2";
     await file.writeAsString(jsonEncode(map));
   } catch (e) {
     print("Error saving settings: $e");
@@ -184,6 +193,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final GsiConfigurator _configurator = GsiConfigurator();
   final TextEditingController _joinController = TextEditingController();
   final TextEditingController _cs2PathController = TextEditingController();
+  final TextEditingController _csgoPathController = TextEditingController();
   final TextEditingController _dbUserController = TextEditingController();
   final TextEditingController _dbPassController = TextEditingController();
   final TextEditingController _steamIDKeyController = TextEditingController();
@@ -236,6 +246,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _status = _lgpkg.get("WaitingAction");
     _nameController = TextEditingController(text: widget.steam.getPlayerName());
     _cs2PathController.text = g_CS2Path;
+    _csgoPathController.text = g_CSGOPath;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
     _steamIDKeyController.text = g_steamIDKey;
@@ -634,7 +645,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
           );
         },
       );
-
       try {
         final res = await demo.processDemo(path);
 
@@ -746,7 +756,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Future<void> _hostMatch() async {
-    if (await _configurator.setupGsi(g_CS2Path,widget.p2pService) == false) {
+    String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+
+    if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
       _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
       return;
     }
@@ -774,13 +786,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       String hostIP = widget.p2pService.getVirtualIPForPeer(matchResult);
       widget.p2pService.connectToPeer(matchResult);
       await Future.delayed(const Duration(seconds: 3));
-      await _runner.startClient(g_CS2Path, hostIP, _nameController.text);
+      await _runner.startClient(activePath, g_selectedGame, hostIP, _nameController.text);
     }
   }
 
   void _createMatch() async {
     if (!_isSearching) {
-      if (await _configurator.setupGsi(g_CS2Path, widget.p2pService) == false) {
+      String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+      if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
         _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
         return;
       }
@@ -793,7 +806,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       setState(() => _status = "${_lgpkg.get("StartingServer")} (${_lgpkg.get(_selectedModeTitle)})...");
       
       await _runner.startServer(
-        g_CS2Path, 
+        activePath, 
+        g_selectedGame, 
         "0.0.0.0", 
         _selectedMap, 
         _selectedGameType, 
@@ -821,7 +835,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (targetID.isEmpty) return;
     String hostIP = widget.p2pService.getVirtualIPForPeer(targetID);
     widget.p2pService.connectToPeer(targetID);
-    await _runner.startClient(g_CS2Path, hostIP, _nameController.text);
+    String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+    await _runner.startClient(activePath, g_selectedGame, hostIP, _nameController.text);
   }
 
   Future<void> _refreshAuctions() async {
@@ -1731,6 +1746,7 @@ Widget _buildBettingContent() {
 
   void _showSettingsWindow() {
     String tempLanguage = appLanguageNotifier.value;
+    String tempGame = g_selectedGame;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
     _steamIDKeyController.text = g_steamIDKey;
@@ -1763,6 +1779,38 @@ Widget _buildBettingContent() {
                     ),
                   ), 
                   const SizedBox(height: 20),
+                  Text(_lgpkg.get("CSGOPath"), style: const TextStyle(color: Colors.grey)), 
+                  TextField(
+                    controller: _csgoPathController, 
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
+                    ),
+                  ), 
+                  const SizedBox(height: 20),
+
+                  Text("Active Game Version", style: const TextStyle(color: Colors.grey)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(border: Border.all(color: kEdenBorder), borderRadius: BorderRadius.circular(4)),
+                    child: DropdownButton<String>(
+                      value: tempGame,
+                      dropdownColor: kEdenSurface,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      style: const TextStyle(color: Colors.white),
+                      items: const [
+                        DropdownMenuItem(value: "CS2", child: Text("Counter-Strike 2")),
+                        DropdownMenuItem(value: "CSGO", child: Text("CS:GO (Legacy)")),
+                      ],
+                      onChanged: (val) {
+                        if(val != null) setDialogState(() => tempGame = val);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
                   Text(_lgpkg.get("Steam64ID"), style: const TextStyle(color: Colors.grey)), 
                     TextField(
                       controller: _steamIDKeyController, 
@@ -1846,6 +1894,8 @@ Widget _buildBettingContent() {
                         style: ElevatedButton.styleFrom(backgroundColor: kEdenOrange), 
                         onPressed: (){ 
                           g_CS2Path = _cs2PathController.text;
+                          g_CSGOPath = _csgoPathController.text;
+                          g_selectedGame = tempGame;
                           g_dbUser = _dbUserController.text;
                           g_DbPassword = _dbPassController.text;
                           g_steamIDKey = _steamIDKeyController.text;
