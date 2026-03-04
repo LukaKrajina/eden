@@ -29,8 +29,8 @@ static const String _gsiContent = '''
 }
 ''';
 
-  Future<bool> setupGsi(String cs2Path,P2PService _p2p) async {
-    if (cs2Path.isEmpty) return false;
+  Future<bool> setupGsi(String gamePath, String gameVersion,P2PService _p2p) async {
+    if (gamePath.isEmpty) return false;
 
     String token = await _p2p.getGsiToken();
 
@@ -41,7 +41,13 @@ static const String _gsiContent = '''
 
     final finalConfigContent = _gsiContent.replaceFirst('%s', token);
 
-    final cfgDir = Directory(p.join(cs2Path, 'game', 'csgo', 'cfg'));
+    Directory cfgDir;
+    if (gameVersion == "CS2") {
+      cfgDir = Directory(p.join(gamePath, 'game', 'csgo', 'cfg'));
+    } else {
+      cfgDir = Directory(p.join(gamePath, 'csgo', 'cfg'));
+    }
+
     if (!await cfgDir.exists()) {
       print("[Config] Error: CFG directory not found.");
       return false;
@@ -50,7 +56,7 @@ static const String _gsiContent = '''
     try {
       final file = File(p.join(cfgDir.path, "gamestate_integration_eden.cfg"));
       await file.writeAsString(finalConfigContent);
-      print("[Config] GSI Installed.");
+      print("[Config] GSI Installed for $gameVersion.");
       return true;
     } catch (e) {
       print("[Config] Write Error: $e");

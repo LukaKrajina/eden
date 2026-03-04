@@ -8,7 +8,8 @@ class GameRunner {
   Process? _clientProcess;
 
   Future<void> startServer(
-      String cs2Path,
+      String gamePath,
+      String gameVersion,
       String virtualIP,
       String mapName,
       String gameType,
@@ -18,7 +19,12 @@ class GameRunner {
       bool recordDemo,
       int port) async {
     
-    final serverExe = p.join(cs2Path, 'game', 'bin', 'win64', 'cs2.exe');
+    String serverExe;
+    if (gameVersion == "CS2") {
+      serverExe = p.join(gamePath, 'game', 'bin', 'win64', 'cs2.exe');
+    } else {
+      serverExe = p.join(gamePath, 'csgo.exe');
+    }
     
     final args = [
       '-dedicated',
@@ -43,11 +49,11 @@ class GameRunner {
       ]);
     }
 
-    if (int.parse(maxPlayers) > 10) {
+    if (int.parse(maxPlayers) > 10 && int.parse(maxPlayers) <= 12) {
       args.addAll(['+sv_coaching_enabled', '1']);
     }
 
-    print("[GameRunner] Starting Server at $virtualIP:$port");
+    print("[GameRunner] Starting $gameVersion Server at $virtualIP:$port");
 
     try {
       _serverProcess = await Process.start(
@@ -57,10 +63,8 @@ class GameRunner {
           runInShell: true
       );
 
-      // Listen to output for debugging
       if (kDebugMode) {
         _serverProcess!.stdout.transform(utf8.decoder).listen((data) {
-           // Filter noisy logs if needed
            if (data.contains("SV:  Spawned End-of-Tick Server")) {
              print("[GameRunner] SERVER READY!");
            }
@@ -71,14 +75,18 @@ class GameRunner {
     }
   }
 
-  Future<void> startClient(String cs2Path, String hostIP, String playerName) async {
-    final clientExe = p.join(cs2Path, 'game', 'bin', 'win64', 'cs2.exe');
+  Future<void> startClient(String gamePath, String gameVersion, String hostIP, String playerName) async {
+    String clientExe;
+    if (gameVersion == "CS2") {
+      clientExe = p.join(gamePath, 'game', 'bin', 'win64', 'cs2.exe');
+    } else {
+      clientExe = p.join(gamePath, 'csgo.exe');
+    }
     
     final args = ['-console','-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
 
-    print("[GameRunner] Connecting Client as $playerName to $hostIP...");
+    print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");
     
-    // Windows Manual IP copy
     try {
       final clipProcess = await Process.start('clip', []);
       clipProcess.stdin.write(hostIP);
@@ -103,7 +111,6 @@ class GameRunner {
     if (_serverProcess != null) {
       print("[GameRunner] Stopping Server...");
       _serverProcess!.kill();
-      // Force kill Windows process just in case
       Process.run('taskkill', ['/F', '/T', '/PID', '${_serverProcess!.pid}']);
       _serverProcess = null;
     }
