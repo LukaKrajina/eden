@@ -139,6 +139,7 @@ type Blockchain struct {
 	Database       *leveldb.DB
 	DBPath         string
 	FriendRegistry map[string]string `json:"friend_registry"`
+	PublicKeys     map[string]string
 	Mutex          sync.RWMutex
 }
 

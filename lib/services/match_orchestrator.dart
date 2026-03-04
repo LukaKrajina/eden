@@ -14,7 +14,15 @@ class MatchOrchestrator {
 
   MatchOrchestrator(this.gameRunner, this.gsiServer, this.p2pService);
 
-  Future<void> hostMatch(String gamePath,String gameVersion,String virtualIP,GameMode mode, String mapName, List<String> roster) async {
+  Future<void> hostMatch(String gamePath,
+      String gameVersion,
+      String virtualIP,
+      GameMode mode, 
+      String mapName, 
+      List<String> roster,  
+      bool recordDemo,
+      int port
+    ) async {
     final config = modeConfigurations[mode]!;
     final matchPassword = _generateRandomPassword();
     final matchID = "match_${DateTime.now().millisecondsSinceEpoch}";
@@ -28,8 +36,8 @@ class MatchOrchestrator {
       config.gameMode, 
       config.maxPlayers, 
       config.friendlyFire, 
-      true, 
-      27015,
+      recordDemo, 
+      port,
       serverPassword: matchPassword
     );
 
