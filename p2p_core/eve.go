@@ -489,21 +489,25 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				}
 
 				playerRatings := make(map[string]float64)
+				playerTeams := make(map[string]string)
+
 				if len(parts) > 3 {
 					alignments := strings.Split(parts[3], ",")
 					for _, align := range alignments {
 						ap := strings.Split(align, "=")
 						if len(ap) == 3 {
 							steamID := ap[0]
+							team := ap[1]
 							rating, _ := strconv.ParseFloat(ap[2], 64)
 							if peerID, ok := bc.SteamToPeerID[steamID]; ok {
 								playerRatings[peerID] = rating
+								playerTeams[peerID] = team
 							}
 						}
 					}
 				}
 
-				bc.DistributePlayerXP(matchID, session.Roster, votedWinner, votedMVP, playerRatings)
+				bc.DistributePlayerXP(matchID, session.Roster, votedWinner, votedMVP, playerRatings, playerTeams)
 
 				delete(bc.MatchSessions, matchID)
 				delete(bc.MatchVotes, matchID)
@@ -513,7 +517,7 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 	return true
 }
 
-func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string, playerRatings map[string]float64) {
+func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string, playerRatings map[string]float64, playerTeams map[string]string) {
 	mvpPeerID := ""
 	if pid, ok := bc.SteamToPeerID[mvpSteamID]; ok {
 		mvpPeerID = pid
@@ -531,6 +535,8 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 
 	for _, peerID := range roster {
 		isMVP := (peerID == mvpPeerID)
+		playerTeam := playerTeams[peerID]
+		didWin := (playerTeam == winnerTeam)
 
 		rating := playerRatings[peerID]
 		if rating == 0 {
@@ -539,7 +545,8 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 
 		payloadMap := map[string]interface{}{
 			"target_id":   peerID,
-			"win":         isMVP,
+			"win":         didWin,
+			"is_mvp":      isMVP,
 			"hltv_rating": rating,
 		}
 
@@ -547,7 +554,7 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 			fmt.Printf("[XP] Processing Virtual Update: %s\n", string(data))
 		}
 
-		bc.processMatchProgression(peerID, isMVP, rating, teamAvg)
+		bc.processMatchProgression(peerID, didWin, rating, teamAvg)
 	}
 }
 
