@@ -16,7 +16,9 @@ class GameRunner {
       String maxPlayers,
       String friendlyFire,
       bool recordDemo,
-      int port) async {
+      int port,
+      {String? serverPassword}
+    ) async {
     
     String serverExe;
     if (gameVersion == "CS2") {
@@ -39,7 +41,9 @@ class GameRunner {
       '+maxplayers', maxPlayers,
       '+mp_friendlyfire', friendlyFire,
       '+sv_lan', '1', 
-      '-nojoy'
+      '-nojoy',
+      '+mp_warmuptime', '300',
+      '+mp_join_grace_time', '0'
     ];
 
     if (recordDemo) {
@@ -50,6 +54,10 @@ class GameRunner {
       ]);
     }
 
+    if (serverPassword != null && serverPassword.isNotEmpty) {
+      args.addAll(['+sv_password', serverPassword]);
+    }
+    
     if (int.parse(maxPlayers) > 10 && int.parse(maxPlayers) <= 12) {
       args.addAll(['+sv_coaching_enabled', '1']);
     }

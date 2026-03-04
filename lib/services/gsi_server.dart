@@ -6,6 +6,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'p2p_service.dart';
 
 class GsiServer {
+  String _currentPhase = "unknown";
   Function(Map<String, dynamic>)? onDataReceived;
   HttpServer? _server;
   DateTime? _matchStart;
@@ -32,10 +33,14 @@ class GsiServer {
     print('[GSI] Listening on port 3000');
   }
 
+  int get currentLobbySize => _uniquePlayers.length;
+  String get currentPhase => _currentPhase;
+
   void _processGameData(Map<String, dynamic> data) {
     if (!data.containsKey('map')) return;
 
     final phase = data['map']['phase'];
+    _currentPhase = phase;
 
     if (phase == 'live' && !_isMatchLive) {
       print("[GSI] Match Started - Tracking for Mining...");
