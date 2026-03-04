@@ -1,12 +1,15 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -162,6 +165,7 @@ func InitializeChain(dbPath string) {
 		MatchVotes:     make(map[string]map[string]string),
 		MatchSessions:  make(map[string]MatchSessionInfo),
 		FriendRegistry: make(map[string]string),
+		PublicKeys:     make(map[string]string),
 		Database:       db,
 		DBPath:         dbPath,
 	}
@@ -324,6 +328,10 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 		isSystemTx := tx.Sender == "SYSTEM_MINT" || tx.Sender == "SYSTEM_PAYOUT"
 
 		expectedNonce := bc.AccountNonces[tx.Sender]
+
+		if len(tx.PublicKey) > 0 {
+			bc.PublicKeys[tx.Sender] = hex.EncodeToString(tx.PublicKey)
+		}
 
 		if !isSystemTx {
 			if !VerifyTransaction(tx) {
@@ -557,6 +565,64 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 
 		bc.processMatchProgression(peerID, didWin, rating, teamAvg)
 	}
+}
+
+func DeriveSharedAESKey(myPrivHex string, peerPubHex string) ([]byte, error) {
+	privBytes, _ := hex.DecodeString(myPrivHex)
+	pubBytes, _ := hex.DecodeString(peerPubHex)
+
+	privKey, err := x509.ParseECPrivateKey(privBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	genericPubKey, err := x509.ParsePKIXPublicKey(pubBytes)
+	if err != nil {
+		return nil, err
+	}
+	pubKey := genericPubKey.(*ecdsa.PublicKey)
+
+	myECDH, err := privKey.ECDH()
+	if err != nil {
+		return nil, err
+	}
+	peerECDH, err := pubKey.ECDH()
+	if err != nil {
+		return nil, err
+	}
+
+	sharedSecret, err := myECDH.ECDH(peerECDH)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := sha256.Sum256(sharedSecret)
+	return hash[:], nil
+}
+
+func EncryptPassword(aesKey []byte, password string) string {
+	block, _ := aes.NewCipher(aesKey)
+	gcm, _ := cipher.NewGCM(block)
+	nonce := make([]byte, gcm.NonceSize())
+	rand.Read(nonce)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(password), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext)
+}
+
+func DecryptPassword(aesKey []byte, encryptedBase64 string) string {
+	data, _ := base64.StdEncoding.DecodeString(encryptedBase64)
+	block, _ := aes.NewCipher(aesKey)
+	gcm, _ := cipher.NewGCM(block)
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return ""
+	}
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return ""
+	}
+	return string(plaintext)
 }
 
 func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRating float64, teamAvg float64) {
