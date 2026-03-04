@@ -25,6 +25,7 @@ const Color kEdenBorder = Color(0xFF333333);
 
 String g_CS2Path = "";
 String g_CSGOPath = "";
+String g_CSGOServerPath = "";
 String g_selectedGame = "CS2";
 String g_dbUser = "postgres";
 String g_DbPassword = "password";
@@ -75,6 +76,7 @@ Future<void> _loadSettings() async {
       final map = jsonDecode(content);
       g_CS2Path = map['cs2_path'] ?? "";
       g_CSGOPath = map['csgo_path'] ?? "";
+      g_CSGOServerPath = map['csgo_server_path'] ?? "";
       g_selectedGame = map['selected_game'] ?? "CS2";
       g_dbUser = map['db_user'] ?? "postgres";
       g_DbPassword = map['db_password'] ?? "password";
@@ -93,6 +95,7 @@ Future<void> _saveSettings() async {
     final map = {
       'cs2_path': g_CS2Path,
       'csgo_path': g_CSGOPath,
+      'csgo_server_path': g_CSGOServerPath,
       'selected_game': g_selectedGame,
       'db_user': g_dbUser,
       'db_password': g_DbPassword,
@@ -102,6 +105,7 @@ Future<void> _saveSettings() async {
     };
     g_CS2Path = map['cs2_path'] ?? "";
     g_CSGOPath = map['csgo_path'] ?? "";
+    g_CSGOServerPath = map['csgo_server_path'] ?? "";
     g_selectedGame = map['selected_game'] ?? "CS2";
     await file.writeAsString(jsonEncode(map));
   } catch (e) {
@@ -194,6 +198,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _joinController = TextEditingController();
   final TextEditingController _cs2PathController = TextEditingController();
   final TextEditingController _csgoPathController = TextEditingController();
+  final TextEditingController _csgoServerPathController = TextEditingController();
   final TextEditingController _dbUserController = TextEditingController();
   final TextEditingController _dbPassController = TextEditingController();
   final TextEditingController _steamIDKeyController = TextEditingController();
@@ -748,7 +753,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         _isSearching = false;
         _status = _lgpkg.get("MatchCancelled");
       });
-      _runner.stopClient();
+      _runner.stopClient(g_selectedGame);
       _runner.stopServer();
     } else {
       _hostMatch();
@@ -792,7 +797,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _createMatch() async {
     if (!_isSearching) {
-      String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+      String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOServerPath;
       if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
         _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
         return;
@@ -806,7 +811,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       setState(() => _status = "${_lgpkg.get("StartingServer")} (${_lgpkg.get(_selectedModeTitle)})...");
       
       await _runner.startServer(
-        activePath, 
+        activePath,
         g_selectedGame, 
         "0.0.0.0", 
         _selectedMap, 
@@ -1790,6 +1795,17 @@ Widget _buildBettingContent() {
                   ), 
                   const SizedBox(height: 20),
 
+                  Text("CSGO Server Path", style: const TextStyle(color: Colors.grey)), 
+                  TextField(
+                    controller: _csgoServerPathController, 
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenBorder)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: kEdenOrange)),
+                    ),
+                  ), 
+                  const SizedBox(height: 20),
+
                   Text("Active Game Version", style: const TextStyle(color: Colors.grey)),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1895,6 +1911,7 @@ Widget _buildBettingContent() {
                         onPressed: (){ 
                           g_CS2Path = _cs2PathController.text;
                           g_CSGOPath = _csgoPathController.text;
+                          g_CSGOServerPath = _csgoServerPathController.text;
                           g_selectedGame = tempGame;
                           g_dbUser = _dbUserController.text;
                           g_DbPassword = _dbPassController.text;

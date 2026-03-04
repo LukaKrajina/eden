@@ -31,7 +31,7 @@ class GameRunner {
     if (gameVersion == "CS2") {
       serverExe = p.join(gamePath, 'game', 'bin', 'win64', 'cs2.exe');
     } else {
-      serverExe = p.join(gamePath, 'csgo.exe');
+      serverExe = p.join(gamePath, 'srcds.exe');
     }
     
     final args = [
