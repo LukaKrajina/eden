@@ -6,15 +6,6 @@ import 'package:path/path.dart' as p;
 class GameRunner {
   Process? _serverProcess;
 
-  Future<void> _ensureSteamAppId(String exePath) async {
-    final exeDir = p.dirname(exePath);
-    final appIdFile = File(p.join(exeDir, 'steam_appid.txt'));
-    
-    if (!await appIdFile.exists()) {
-      await appIdFile.writeAsString('730');
-    }
-  }
-
   Future<void> startServer(
       String gamePath,
       String gameVersion,
@@ -35,6 +26,7 @@ class GameRunner {
     }
     
     final args = [
+      if (gameVersion != "CS2") ...['-game', 'csgo'],
       '-dedicated',
       '-insecure',
       '-usercon',
