@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 
 class GameRunner {
   Process? _serverProcess;
-  Process? _clientProcess;
 
   Future<void> _ensureSteamAppId(String exePath) async {
     final exeDir = p.dirname(exePath);
@@ -38,8 +37,8 @@ class GameRunner {
     await _ensureSteamAppId(serverExe);
 
     final args = [
-      '-steam',
       '-dedicated',
+      '-insecure',
       '-usercon',
       '-console',
       '+ip', virtualIP,
@@ -96,8 +95,8 @@ class GameRunner {
     }
 
     await _ensureSteamAppId(clientExe);
-    
-    final args = ['-steam','-console','-lowlatency', '-nojoy', '+connect', hostIP, '+name', playerName]; 
+
+    final steamUri = 'steam://run/730//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
 
     print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");
     
@@ -111,11 +110,11 @@ class GameRunner {
   }
 
     try {
-      _clientProcess = await Process.start(
-        clientExe, 
-        args, 
-        workingDirectory: p.dirname(clientExe)
-      );
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', steamUri]);
+      } else {
+        await Process.run('xdg-open', [steamUri]); 
+      }
     } catch (e) {
       print("[GameRunner] Client Error: $e");
     }
@@ -131,9 +130,9 @@ class GameRunner {
   }
 
   void stopClient() {
-    if (_clientProcess != null) {
-      _clientProcess!.kill();
-      _clientProcess = null;
+    if (Platform.isWindows) {
+      Process.run('taskkill', ['/F', '/T', '/IM', 'cs2.exe']);
+      Process.run('taskkill', ['/F', '/T', '/IM', 'csgo.exe']);
     }
   }
 }
