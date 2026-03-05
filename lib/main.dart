@@ -861,7 +861,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         "0.0.0.0",
         mode,
         _selectedMap,
-        [_myPeerID],
+        [],
         _recordDemo,
         27015
       );
