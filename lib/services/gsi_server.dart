@@ -39,22 +39,34 @@ class GsiServer {
   void _processGameData(Map<String, dynamic> data) {
     if (!data.containsKey('map')) return;
 
-    final phase = data['map']['phase'];
+    final phase = data['map']['phase']?.toString() ?? 'unknown';
     _currentPhase = phase;
+
+    if (phase == 'warmup' || phase == 'unknown') {
+      if (_isMatchLive) {
+        print("[GSI] Match aborted or restarted. Canceling current mining session.");
+        _isMatchLive = false;
+        _uniquePlayers.clear();
+      }
+      return;
+    }
 
     if (phase == 'live' && !_isMatchLive) {
       print("[GSI] Match Started - Tracking for Mining...");
       _matchStart = DateTime.now();
       _isMatchLive = true;
-      _uniquePlayers.clear();
     }
 
-    if (data.containsKey('allplayers')) {
-      (data['allplayers'] as Map).forEach((key, _) => _uniquePlayers.add(key));
+    if (_isMatchLive && data.containsKey('allplayers')) {
+      _uniquePlayers.clear();
+      (data['allplayers'] as Map).forEach((key, _) {
+        _uniquePlayers.add(key);
+      });
     }
 
     if (phase == 'gameover' && _isMatchLive) {
       _isMatchLive = false;
+      
       final duration = DateTime.now().difference(_matchStart!).inSeconds;
       
       print("[GSI] Match Ended. Duration: ${duration}s. Witnesses: ${_uniquePlayers.length}");
