@@ -85,6 +85,7 @@ var (
 	lastBroadcastHash string
 	lastBroadcastTime int64
 	bettingTopic      *pubsub.Topic
+	readyFeedTopic    *pubsub.Topic
 	matchFeedTopic    *pubsub.Topic
 	networkMatches    = make(map[string]MatchAnnouncement)
 	matchesMutex      sync.RWMutex
@@ -146,6 +147,12 @@ type GSIState struct {
 			RoundKills int `json:"round_kills"`
 		} `json:"state"`
 	} `json:"player"`
+}
+
+type MatchReadyBroadcast struct {
+	MatchID   string `json:"match_id"`
+	PeerID    string `json:"peer_id"`
+	Signature string `json:"signature"`
 }
 
 type LiveMatchSession struct {
@@ -1967,6 +1974,8 @@ func setupPubSub() {
 		}
 	}()
 
+	readyFeedTopic, _ = pubSub.Join("eden-match-ready")
+
 	matchFeedTopic, _ = pubSub.Join("eden-matches")
 	matchSub, _ := matchFeedTopic.Subscribe()
 	go func() {
@@ -2050,6 +2059,21 @@ func RegisterMySteamID(steamID *C.char) *C.char {
 //export GetGSIToken
 func GetGSIToken() *C.char {
 	return C.CString(getMachineToken())
+}
+
+//export BroadcastMatchReady
+func BroadcastMatchReady(matchID *C.char) {
+	mID := C.GoString(matchID)
+
+	ann := MatchReadyBroadcast{
+		MatchID: mID,
+		PeerID:  h.ID().String(),
+		// Add signature logic to prevent spoofing
+	}
+
+	if data, err := json.Marshal(ann); err == nil {
+		readyFeedTopic.Publish(ctx, data)
+	}
 }
 
 //export GetMyPeerID

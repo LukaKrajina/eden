@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert'; // Added for JSON
 import 'package:eden/misc/mod_config_mapper.dart';
+import 'package:eden/widget/match_ready_room.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'misc/pro_player_grid.dart';
+import 'widget/pro_player_grid.dart';
 import 'package:eden/services/gsi_configurator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'localization/lgpkg.dart';
@@ -815,14 +816,34 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         _status = _lgpkg.get("MatchFound");
       });
       
-      await widget.matchOrchestrator.joinMatch(
-        activePath, 
-        g_selectedGame, 
-        foundMatchID, 
-        targetPeerID, 
-        _nameController.text
-      );
-
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => MatchReadyRoom(
+            matchID: foundMatchID!,
+            modeTitle: _selectedModeTitle,
+            requiredPlayers: int.parse(_maxPlayers),
+            p2pService: widget.p2pService,
+            onAllReady: () async {
+              setState(() => _status = "JOINING MATCH...");
+              await widget.matchOrchestrator.joinMatch(
+                activePath, 
+                g_selectedGame, 
+                foundMatchID!, 
+                targetPeerID, 
+                _nameController.text
+              );
+            },
+            onTimeout: () {
+              setState(() => _status = "MATCH CANCELLED (TIMEOUT)");
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Someone failed to accept the match."), backgroundColor: Colors.red)
+              );
+            },
+          )
+        );
+      }
     } else {
       setState(() {
         _isSearching = false;
