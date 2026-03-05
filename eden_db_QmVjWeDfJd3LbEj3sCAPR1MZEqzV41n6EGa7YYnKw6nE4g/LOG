@@ -69,3 +69,14 @@
 16:21:05.837512 table@remove removed @12
 16:21:05.837512 table@remove removed @9
 16:21:05.837512 table@remove removed @6
+=============== Mar 5, 2026 (CST) ===============
+11:49:02.483964 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+11:49:02.499309 version@stat F·[0 1] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+11:49:02.499864 db@open opening
+11:49:02.499864 journal@recovery F·1
+11:49:02.500378 journal@recovery recovering @16
+11:49:02.509763 memdb@flush created L0@19 N·2 S·763B "block_1,v19":"lat..dex,v20"
+11:49:02.510800 version@stat F·[1 1] S·2KiB[763B 1KiB] Sc·[0.25 0.00]
+11:49:02.522864 db@janitor F·5 G·1
+11:49:02.522864 db@janitor removing table-15
+11:49:02.523387 db@open done T·23ms

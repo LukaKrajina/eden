@@ -878,23 +878,43 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   void _joinGame() async {
-    String input = _joinController.text.trim();
-    if (input.isEmpty || !input.contains("@")) {
-      _showErrorDialog("Invalid Input", "Please use the format MatchID@HostPeerID");
+    String inputPeerID = _joinController.text.trim();
+    if (inputPeerID.isEmpty) return;
+
+    String? resolvedMatchID;
+    
+    if (inputPeerID.contains("@")) {
+      List<String> parts = inputPeerID.split("@");
+      resolvedMatchID = parts[0];
+      inputPeerID = parts[1];
+    } else {
+      for (var match in _liveMatches) {
+        if (match['host_id'] == inputPeerID) {
+          resolvedMatchID = match['match_id'];
+          break;
+        }
+      }
+    }
+
+    if (resolvedMatchID == null) {
+      _showErrorDialog(
+        "Match Not Found", 
+        "Could not find an active public match for this PeerID. If it's a private lobby, you need the MatchID!"
+      );
       return;
     }
 
-    List<String> parts = input.split("@");
-    String matchID = parts[0];
-    String targetID = parts[1];
-    widget.p2pService.connectToPeer(targetID);
+    widget.p2pService.connectToPeer(inputPeerID);
     
     String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+
+    setState(() => _status = "JOINING MATCH...");
+
     await widget.matchOrchestrator.joinMatch(
       activePath, 
       g_selectedGame, 
-      matchID, 
-      targetID, 
+      resolvedMatchID, 
+      inputPeerID, 
       _nameController.text
     );
   }
