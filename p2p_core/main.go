@@ -57,6 +57,7 @@ import (
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var SteamAPIKey = os.Getenv("STEAM_API_KEY")
@@ -1040,12 +1041,14 @@ func TriggerSync(pID peer.ID) {
 		fmt.Printf("[Sync] Reorganizing Chain. Rolling back from %d to %d\n", localHeight-1, ancestor)
 		EdenChain.Mutex.Lock()
 
+		batch := new(leveldb.Batch)
 		for i := localHeight - 1; i > ancestor; i-- {
 			key := fmt.Sprintf("block_%d", i)
-			EdenChain.Database.Delete([]byte(key), nil)
+			batch.Delete([]byte(key))
 		}
 
-		EdenChain.Database.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)), nil)
+		batch.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)))
+		EdenChain.Database.Write(batch, nil)
 
 		EdenChain.Balances = make(map[string]float64)
 		EdenChain.Profiles = make(map[string]*UserProfile)
@@ -1066,7 +1069,7 @@ func TriggerSync(pID peer.ID) {
 		if len(validBlocks) > 0 {
 			EdenChain.LastBlock = validBlocks[len(validBlocks)-1]
 		} else {
-			EdenChain.LastBlock = Block{Index: -1}
+			EdenChain.LastBlock = Block{Index: -1, Hash: "0"}
 		}
 
 		EdenChain.Mutex.Unlock()

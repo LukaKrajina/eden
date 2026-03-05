@@ -176,10 +176,10 @@ func InitializeChain(dbPath string) {
 func (bc *Blockchain) SaveBlockToDB(b Block) {
 	data, _ := json.Marshal(b)
 	key := fmt.Sprintf("block_%d", b.Index)
-
-	bc.Database.Put([]byte(key), data, nil)
-
-	bc.Database.Put([]byte("latest_index"), []byte(strconv.Itoa(b.Index)), nil)
+	batch := new(leveldb.Batch)
+	batch.Put([]byte(key), data)
+	batch.Put([]byte("latest_index"), []byte(strconv.Itoa(b.Index)))
+	bc.Database.Write(batch, nil)
 }
 
 func (bc *Blockchain) LoadFromDB() {
@@ -187,7 +187,7 @@ func (bc *Blockchain) LoadFromDB() {
 	if err != nil {
 		fmt.Println("[DB] No history found. Creating Genesis Block.")
 		genesis := Block{
-			Index: 0, Timestamp: time.Now().Unix(), Hash: "GENESIS_BLOCK", PrevHash: "0",
+			Index: 0, Timestamp: 1704067200, Hash: "GENESIS_BLOCK", PrevHash: "0",
 		}
 		bc.AddBlock(genesis)
 		return
