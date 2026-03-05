@@ -1125,14 +1125,34 @@ func requestSync(pID peer.ID, req SyncRequest) (SyncResponse, error) {
 }
 
 //export StartMatch
-func StartMatch(matchID *C.char, playerList *C.char) *C.char {
+func StartMatch(matchID *C.char, playerList *C.char, password *C.char) *C.char {
 	mID := C.GoString(matchID)
-	roster := C.GoString(playerList)
+	rosterStr := C.GoString(playerList)
+	serverPwd := C.GoString(password)
 
 	currentMatchID = mID
+	roster := strings.Split(rosterStr, ",")
+	EdenChain.Mutex.RLock()
+	var encryptedPasswords []string
+	for _, peerID := range roster {
+		peerPubKey, exists := EdenChain.PublicKeys[peerID]
+		if !exists || peerID == h.ID().String() {
+			encryptedPasswords = append(encryptedPasswords, "HOST")
+			continue
+		}
 
-	fmt.Printf("[Lobby] Initializing Match %s with Roster: %s\n", mID, roster)
+		aesKey, err := DeriveSharedAESKey(myPrivKey, peerPubKey)
+		if err == nil {
+			enc := EncryptPassword(aesKey, serverPwd)
+			encryptedPasswords = append(encryptedPasswords, enc)
+		} else {
+			encryptedPasswords = append(encryptedPasswords, "ERR")
+		}
+	}
+	EdenChain.Mutex.RUnlock()
 
+	encPwdStr := strings.Join(encryptedPasswords, ",")
+	finalPayload := fmt.Sprintf("%s|%s|%s", mID, rosterStr, encPwdStr)
 	pubKeyBytes, err := hex.DecodeString(myPubKey)
 	if err != nil {
 		return C.CString("Error: Invalid Public Key")
@@ -1144,13 +1164,13 @@ func StartMatch(matchID *C.char, playerList *C.char) *C.char {
 		Sender:    h.ID().String(),
 		Receiver:  "CONSENSUS_ENGINE",
 		Amount:    0,
-		Payload:   fmt.Sprintf("%s|%s", mID, roster),
+		Payload:   finalPayload,
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
 		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
-	if !strings.Contains(roster, h.ID().String()) {
+	if !strings.Contains(rosterStr, h.ID().String()) {
 		fmt.Println("[Security] Host attempted to start match without being in roster.")
 		return C.CString("Error: Invalid Roster")
 	}
@@ -1182,6 +1202,56 @@ func StartMatch(matchID *C.char, playerList *C.char) *C.char {
 	return C.CString("Error: Block Rejected")
 }
 
+//export GetMatchPassword
+func GetMatchPassword(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+	myID := h.ID().String()
+
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+
+	for i := EdenChain.LastBlock.Index; i >= 0; i-- {
+		key := fmt.Sprintf("block_%d", i)
+		data, err := EdenChain.Database.Get([]byte(key), nil)
+		if err != nil {
+			continue
+		}
+
+		var b Block
+		json.Unmarshal(data, &b)
+
+		for _, tx := range b.Transactions {
+			if tx.Type == "MATCH_START" && strings.HasPrefix(tx.Payload, mID+"|") {
+				parts := strings.Split(tx.Payload, "|")
+				if len(parts) != 3 {
+					return C.CString("")
+				}
+
+				roster := strings.Split(parts[1], ",")
+				encPasswords := strings.Split(parts[2], ",")
+
+				for idx, playerID := range roster {
+					if playerID == myID && idx < len(encPasswords) {
+						if encPasswords[idx] == "HOST" {
+							return C.CString("")
+						}
+
+						hostPubKey := EdenChain.PublicKeys[tx.Sender]
+						aesKey, err := DeriveSharedAESKey(myPrivKey, hostPubKey)
+						if err != nil {
+							return C.CString("Error: Crypto Failure")
+						}
+
+						plaintext := DecryptPassword(aesKey, encPasswords[idx])
+						return C.CString(plaintext)
+					}
+				}
+			}
+		}
+	}
+	return C.CString("Error: Match Not Found")
+}
+
 //export StopEdenNode
 func StopEdenNode() {
 	streamLock.Lock()
@@ -1192,6 +1262,43 @@ func StopEdenNode() {
 	if h != nil {
 		h.Close()
 	}
+}
+
+//export AbortMatch
+func AbortMatch(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+
+	pubKeyBytes, _ := hex.DecodeString(myPubKey)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("abort_%s_%d", mID, time.Now().UnixNano()),
+		Type:      "MATCH_ABORT",
+		Sender:    h.ID().String(),
+		Receiver:  "CONSENSUS_ENGINE",
+		Amount:    0,
+		Payload:   mID,
+		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		return C.CString("Error: Signing Failed")
+	}
+
+	newBlock := Block{
+		Index:        EdenChain.LastBlock.Index + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     EdenChain.LastBlock.Hash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString("Success")
+	}
+	return C.CString("Error: Block Rejected")
 }
 
 //export SubmitGameBlock

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert'; // Added for JSON
+import 'package:eden/misc/mod_config_mapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +14,7 @@ import 'services/steam_service.dart';
 import 'services/game_runner.dart';
 import 'services/gsi_server.dart';
 import 'services/p2p_service.dart';
+import 'services/match_orchestrator.dart';
 import 'services/demo/demo_service.dart';
 import 'services/demo/api_service.dart';
 
@@ -44,11 +46,13 @@ void main() async {
   await steam.init();
 
   final p2p = P2PService();
+  final gameRunner = GameRunner();
   final gsi = GsiServer();
+  final matchOrchestrator = MatchOrchestrator(gameRunner, gsi, p2p);
   demo = DemoService();
   demo.setDatabaseUser(g_dbUser);
   demo.setDatabasePassword(g_DbPassword);
-  
+
   if (g_steamApiKey.isNotEmpty) {
     p2p.updateSteamAPIKey(g_steamApiKey);
   }
@@ -65,6 +69,7 @@ void main() async {
     gsiServer: gsi,
     p2pService: p2p,
     demoService: demo,
+    matchOrchestrator: matchOrchestrator,
   ));
 }
 
@@ -118,6 +123,7 @@ class MyApp extends StatelessWidget {
   final GsiServer gsiServer;
   final P2PService p2pService;
   final DemoService demoService;
+  final MatchOrchestrator matchOrchestrator;
   final Lgpkg _lgpkg = Lgpkg(); 
 
   MyApp({
@@ -126,6 +132,7 @@ class MyApp extends StatelessWidget {
     required this.gsiServer,
     required this.p2pService, 
     required this.demoService, 
+    required this.matchOrchestrator,
   });
 
   @override
@@ -156,6 +163,7 @@ class MyApp extends StatelessWidget {
             gsiServer: gsiServer, 
             p2pService: p2pService, 
             demoService: demoService,
+            matchOrchestrator: matchOrchestrator,
           ),
         );
       },
@@ -178,6 +186,7 @@ class ServerControlPanel extends StatefulWidget {
   final GsiServer gsiServer;
   final P2PService p2pService;
   final DemoService demoService;
+  final MatchOrchestrator matchOrchestrator;
 
   const ServerControlPanel({
     super.key,
@@ -185,6 +194,7 @@ class ServerControlPanel extends StatefulWidget {
     required this.gsiServer, 
     required this.p2pService, 
     required this.demoService,
+    required this.matchOrchestrator,
   });
 
   @override
@@ -757,11 +767,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _runner.stopClient(g_selectedGame);
       _runner.stopServer();
     } else {
-      _hostMatch();
+      _findAndJoinMatch();
     }
   }
 
-  Future<void> _hostMatch() async {
+  Future<void> _findAndJoinMatch() async {
     String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
 
     if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
@@ -779,20 +789,46 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _status = _lgpkg.get("SearchingMsg");
     });
 
-    String matchResult = await widget.p2pService.findMatch();
+    String targetPeerID = await widget.p2pService.findMatch();
     
     if (!mounted || !_isSearching) return;
 
-    if (matchResult.isNotEmpty && !matchResult.contains("Error")) {
-       setState(() {
+    if (targetPeerID.isNotEmpty && !targetPeerID.contains("Error")) {
+      String? foundMatchID;
+      for (var match in _liveMatches) {
+        if (match['host_id'] == targetPeerID) {
+          foundMatchID = match['match_id'];
+          break;
+        }
+      }
+
+      if (foundMatchID == null) {
+        _showErrorDialog("Match Error", "Connected to host, but couldn't locate their Match ID on the blockchain.");
+        setState(() {
+          _isSearching = false;
+          _status = "WAITING FOR ACTION";
+        });
+        return;
+      }
+
+      setState(() {
         _isSearching = false;
         _status = _lgpkg.get("MatchFound");
       });
       
-      String hostIP = widget.p2pService.getVirtualIPForPeer(matchResult);
-      widget.p2pService.connectToPeer(matchResult);
-      await Future.delayed(const Duration(seconds: 3));
-      await _runner.startClient(activePath, g_selectedGame, hostIP, _nameController.text);
+      await widget.matchOrchestrator.joinMatch(
+        activePath, 
+        g_selectedGame, 
+        foundMatchID, 
+        targetPeerID, 
+        _nameController.text
+      );
+
+    } else {
+      setState(() {
+        _isSearching = false;
+        _status = "MATCHMAKING FAILED";
+      });
     }
   }
 
@@ -811,25 +847,30 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
       setState(() => _status = "${_lgpkg.get("StartingServer")} (${_lgpkg.get(_selectedModeTitle)})...");
       
-      await _runner.startServer(
+      GameMode mode;
+      switch (_selectedModeTitle) {
+        case "TOURNAMENTS": mode = GameMode.championship; break;
+        case "DEATHMATCH": mode = GameMode.deathmatch; break;
+        case "1V1 HUBS": mode = GameMode.one_one; break;
+        case "MATCHMAKING":
+        default: mode = GameMode.matchmaking; break;
+      }
+
+      await widget.matchOrchestrator.hostMatch(
         activePath,
-        g_selectedGame, 
-        "0.0.0.0", 
-        _selectedMap, 
-        _selectedGameType, 
-        _selectedGameMode, 
-        _maxPlayers, 
-        _isFriendlyFire,
+        g_selectedGame,
+        "0.0.0.0",
+        mode,
+        _selectedMap,
+        [_myPeerID],
         _recordDemo,
         27015
       );
       
-      String matchID = "match_${DateTime.now().millisecondsSinceEpoch}";
-      await widget.p2pService.startHostedMatch(matchID, [_myPeerID]);
       setState(() => _status = _lgpkg.get("ServerOnline"));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Server Hosted & Announced! Match ID: $matchID"),
+        const SnackBar(
+          content: Text("Server Hosted & Announced via Orchestrator!"),
           backgroundColor: Colors.green,
         )
       );
@@ -837,12 +878,25 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   void _joinGame() async {
-    String targetID = _joinController.text.trim();
-    if (targetID.isEmpty) return;
-    String hostIP = widget.p2pService.getVirtualIPForPeer(targetID);
+    String input = _joinController.text.trim();
+    if (input.isEmpty || !input.contains("@")) {
+      _showErrorDialog("Invalid Input", "Please use the format MatchID@HostPeerID");
+      return;
+    }
+
+    List<String> parts = input.split("@");
+    String matchID = parts[0];
+    String targetID = parts[1];
     widget.p2pService.connectToPeer(targetID);
+    
     String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
-    await _runner.startClient(activePath, g_selectedGame, hostIP, _nameController.text);
+    await widget.matchOrchestrator.joinMatch(
+      activePath, 
+      g_selectedGame, 
+      matchID, 
+      targetID, 
+      _nameController.text
+    );
   }
 
   Future<void> _refreshAuctions() async {

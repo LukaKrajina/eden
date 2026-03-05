@@ -84,7 +84,12 @@ class GameRunner {
     }
   }
 
-  Future<void> startClient(String gamePath, String gameVersion, String hostIP, String playerName) async {
+  Future<void> startClient(String gamePath, 
+    String gameVersion, 
+    String hostIP, 
+    String playerName,  
+    {String? serverPassword}
+  ) async {
     String clientExe;
     if (gameVersion == "CS2") {
       clientExe = "730";
@@ -93,7 +98,11 @@ class GameRunner {
     }
 
 
-    final steamUri = 'steam://run/$clientExe//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
+    String steamUri = 'steam://run/$clientExe//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
+
+    if (serverPassword != null && serverPassword.isNotEmpty) {
+      steamUri += ' +password "$serverPassword"';
+    }
 
     print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");
     

@@ -36,6 +36,7 @@ const (
 	TxTypeList            = "LIST_ITEM"
 	TxTypeCloseExpired    = "CLOSE_EXPIRED"
 	TxTypeMatchStart      = "MATCH_START"
+	TxTypeMatchAbort      = "MATCH_ABORT"
 	TxTypeWitness         = "MATCH_WITNESS"
 	TxTypeUpdateProfile   = "UPDATE_PROFILE"
 	TxTypeMatchResult     = "MATCH_RESULT"
@@ -426,6 +427,24 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				}
 				bc.MatchVotes[matchID] = make(map[string]string)
 				fmt.Printf("[Consensus] Match %s started with %d players.\n", matchID, len(players))
+			}
+
+		case TxTypeMatchAbort:
+			matchID := tx.Payload
+			session, exists := bc.MatchSessions[matchID]
+
+			if exists && session.HostID == tx.Sender {
+				fmt.Printf("[Consensus] Match %s aborted by host. Cleaning up...\n", matchID)
+
+				if pool, pExists := bc.ActivePools[matchID]; pExists {
+					for _, bet := range pool.Bets {
+						bc.Balances[bet.Bettor] += bet.Amount
+					}
+					delete(bc.ActivePools, matchID)
+					fmt.Printf("[Betting] Refunded all bets for aborted match %s.\n", matchID)
+				}
+				delete(bc.MatchSessions, matchID)
+				delete(bc.MatchVotes, matchID)
 			}
 
 		case TxTypeWitness:

@@ -6,11 +6,17 @@ import 'package:ffi/ffi.dart';
 typedef StartEngineC = Void Function();
 typedef StartEngineDart = void Function();
 
-typedef StartNetworkMatchC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList);
-typedef StartNetworkMatchDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList);
+typedef StartNetworkMatchC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList, Pointer<Utf8> password);
+typedef StartNetworkMatchDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> playerList, Pointer<Utf8> password);
+
+typedef GetMatchPasswordC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef GetMatchPasswordDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 
 typedef StopEngineC = Void Function();
 typedef StopEngineDart = void Function();
+
+typedef AbortMatchC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef AbortMatchDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 
 typedef GetAuthTokenC = Pointer<Utf8> Function();
 typedef GetAuthTokenDart = Pointer<Utf8> Function();
@@ -104,7 +110,9 @@ class P2PService {
   bool _isInitialized = false;
   late StartEngineDart _startEngine;
   late StartNetworkMatchDart _startNetworkMatch;
+  late GetMatchPasswordDart _getMatchPassword;
   late StopEngineDart _stopEngine;
+  late AbortMatchDart _abortMatch;
   late GetAuthTokenDart _getAuthToken;
   late ConnectToPeerDart _connectToPeer;
   late GetLocalPeerIDDart _getLocalPeerID;
@@ -148,7 +156,9 @@ class P2PService {
   void _bindFunctions() {
     _startEngine = _lib.lookupFunction<StartEngineC, StartEngineDart>('StartEngine');
     _startNetworkMatch = _lib.lookupFunction<StartNetworkMatchC, StartNetworkMatchDart>('StartNetworkMatch');
+    _getMatchPassword = _lib.lookupFunction<GetMatchPasswordC, GetMatchPasswordDart>('GetMatchPassword');
     _stopEngine = _lib.lookupFunction<StopEngineC, StopEngineDart>('StopEngine');
+    _abortMatch = _lib.lookupFunction<AbortMatchC, AbortMatchDart>('AbortMatch');
     _getAuthToken = _lib.lookupFunction<GetAuthTokenC, GetAuthTokenDart>('GetAuthToken');
     _connectToPeer = _lib.lookupFunction<ConnectToPeerC, ConnectToPeerDart>('JoinBattle');
     _getLocalPeerID = _lib.lookupFunction<GetLocalPeerIDC, GetLocalPeerIDDart>('GetLocalPeerID');
@@ -193,6 +203,12 @@ class P2PService {
 
   void stop() {
     if (_isInitialized) _stopEngine();
+  }
+
+  Future<String> abortMatch(String matchID) async {
+   final mPtr = matchID.toNativeUtf8();
+   try { return _consumeNativeString(_abortMatch(mPtr)); } 
+   finally { calloc.free(mPtr); }
   }
 
   Future<String> getGsiToken() async {
@@ -255,17 +271,29 @@ class P2PService {
     return _consumeNativeString(_findMatch());
   }
 
-  Future<String> startHostedMatch(String matchID, List<String> players) async {
+  Future<String> startHostedMatch(String matchID, List<String> players, String password) async {
     if (!_isInitialized) return "Offline";
     final mPtr = matchID.toNativeUtf8();
     final pPtr = players.join(",").toNativeUtf8();
+    final pwdPtr = password.toNativeUtf8();
     try {
-      return _consumeNativeString(_startNetworkMatch(mPtr, pPtr));
+      return _consumeNativeString(_startNetworkMatch(mPtr, pPtr, pwdPtr));
     } finally {
       calloc.free(mPtr);
       calloc.free(pPtr);
+      calloc.free(pwdPtr);
     }
   }
+
+  Future<String> getMatchPassword(String matchID) async {
+   if (!_isInitialized) return "";
+   final mPtr = matchID.toNativeUtf8();
+   try {
+     return _consumeNativeString(_getMatchPassword(mPtr));
+   } finally {
+     calloc.free(mPtr);
+   }
+}
 
   Future<String> submitMatchReward(int duration, int playerCount) async {
     if (!_isInitialized) return "Error: Engine Offline";
