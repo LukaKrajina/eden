@@ -100,8 +100,9 @@ class GameRunner {
 
     String steamUri = 'steam://run/$clientExe//-console -lowlatency -nojoy +connect $hostIP +name "$playerName"';
 
-    if (serverPassword != null && serverPassword.isNotEmpty) {
-      steamUri += ' +password "$serverPassword"';
+    String sanitizedPassword = serverPassword!.replaceAll('"', '');
+    if (sanitizedPassword.isNotEmpty) {
+      steamUri += ' +password "$sanitizedPassword"';
     }
 
     print("[GameRunner] Connecting $gameVersion Client as $playerName to $hostIP...");

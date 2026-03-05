@@ -77,30 +77,41 @@ class MatchOrchestrator {
       String hostPeerID, 
       String playerName
     ) async {
-    print("[Match] Attempting to join match: $matchID");
 
-    final password = await p2pService.getMatchPassword(matchID);
+    print("[Orchestrator] Fetching secure payload for $matchID...");
 
-    if (password.isEmpty || password.startsWith("Error")) {
-      print("[Match] Failed to retrieve or decrypt password. Are you on the roster?");
+    String matchPassword = "";
+    int attempts = 0;
+    const int maxAttempts = 15;
+
+    while (attempts < maxAttempts) {
+      matchPassword = await p2pService.getMatchPassword(matchID);
+      if (!matchPassword.startsWith("Error")) {
+        break; 
+      }
+      
+      attempts++;
+      await Future.delayed(const Duration(seconds: 2));
+    }
+
+    if (matchPassword.startsWith("Error")) {
+      print("[Orchestrator] Fatal: Could not decrypt lobby password. Block rejected or missing.");
       return;
     }
 
-    final hostIP = p2pService.getVirtualIPForPeer(hostPeerID);
-    
-    if (hostIP.isEmpty) {
-      print("[Match] Could not resolve Host IP.");
+    String hostVirtualIP = p2pService.getVirtualIPForPeer(hostPeerID);
+    if (hostVirtualIP.isEmpty) {
+      print("[Orchestrator] Fatal: Host IP routing failed.");
       return;
     }
 
     await gameRunner.startClient(
       gamePath,
       gameVersion,
-      hostIP,
+      hostVirtualIP,
       playerName,
-      serverPassword: password
+      serverPassword: matchPassword
     );
-    
     print("[Match] Client launched successfully.");
   }
 }
