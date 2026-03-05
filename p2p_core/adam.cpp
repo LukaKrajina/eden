@@ -43,7 +43,9 @@ typedef void (*InitPacketBridgeFunc)(void (*)(void*, int));
 typedef char* (*StartEdenNodeFunc)(const char* virtualIP);
 typedef void (*ConnectToPeerFunc)(const char* peerID);
 typedef char* (*GetIPForPeerFunc)(const char* peerID);
+typedef char* (*GetMatchPasswordFunc)(char* matchID);
 typedef char* (*StartMatchFunc)(char* matchID, char* playerList);
+typedef char* (*AbortMatchFunc)(char* matchID);
 typedef char* (*GetWalletPubKeyFunc)();
 typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
@@ -81,6 +83,8 @@ GetMyPeerIDFunc ptrGetMyPeerID = nullptr;
 AutoConnectToPeersFunc ptrAutoConnect = nullptr;
 IsPeerAliveFunc ptrIsPeerAlive = nullptr;
 static GetNetworkMatchesFunc ptrGetNetworkMatches = nullptr;
+GetMatchPasswordFunc ptrGetMatchPassword = nullptr;
+AbortMatchFunc ptrAbortMatch = nullptr;
 GoPacketCallback ptrSendToP2P = nullptr;
 FetchMyInventoryFunc ptrFetchMyInventory = nullptr;
 ListSteamItemFunc ptrListSteamItem = nullptr;
@@ -184,6 +188,8 @@ bool LoadGoDLL() {
     ptrAutoConnect = (AutoConnectToPeersFunc)GetProcAddress(hGo, "AutoConnectToPeers");
     ptrIsPeerAlive = (IsPeerAliveFunc)GetProcAddress(hGo, "IsPeerAlive");
     ptrStartMatch = (StartMatchFunc)GetProcAddress(hGo, "StartMatch");
+    ptrGetMatchPassword = (GetMatchPasswordFunc)GetProcAddress(hGo, "GetMatchPassword");
+    ptrAbortMatch = (AbortMatchFunc)GetProcAddress(hGo, "AbortMatch");
     ptrGetWalletPubKey = (GetWalletPubKeyFunc)GetProcAddress(hGo, "GetWalletPubKey");
     ptrGetNetworkMatches = (GetNetworkMatchesFunc)GetProcAddress(hGo, "GetNetworkMatches");
     ptrSubmitGameBlock = (SubmitGameBlockFunc)GetProcAddress(hGo, "SubmitGameBlock");
@@ -327,6 +333,16 @@ extern "C" __declspec(dllexport) char* FindMatch() {
         return ptrAutoConnect(); 
     }
     return (char*)"Error";
+}
+
+extern "C" __declspec(dllexport) const char* GetMatchPassword(char* matchID) {
+    if (ptrGetMatchPassword) return ptrGetMatchPassword(matchID);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) const char* AbortMatch(char* matchID) {
+    if (ptrAbortMatch) return ptrAbortMatch(matchID);
+    return "Error: DLL Func Missing";
 }
 
 extern "C" __declspec(dllexport) void JoinBattle(char* targetID) {
