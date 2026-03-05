@@ -772,15 +772,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   }
 
   Future<void> _findAndJoinMatch() async {
-    String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
-
-    if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
-      _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
+    if (!_isEngineRunning) {
+      _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("ShieldRequiredMsg"));
       return;
     }
     
-    if (!_isEngineRunning) {
-      _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("ShieldRequiredMsg"));
+    String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOPath;
+    if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
+      _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
       return;
     }
 
@@ -834,14 +833,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   void _createMatch() async {
     if (!_isSearching) {
-      String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOServerPath;
-      if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
-        _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
+      if (!_isEngineRunning) {
+        _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("EnableShieldMsg"));
         return;
       }
       
-      if (!_isEngineRunning) {
-        _showErrorDialog(_lgpkg.get("ACRequired"), _lgpkg.get("EnableShieldMsg"));
+      String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOServerPath;
+      if (await _configurator.setupGsi(activePath, g_selectedGame, widget.p2pService) == false) {
+        _showErrorDialog(_lgpkg.get("ConfigError"), _lgpkg.get("ConfigWriteError"));
         return;
       }
 
@@ -882,7 +881,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     if (inputPeerID.isEmpty) return;
 
     String? resolvedMatchID;
-    
+
     if (inputPeerID.contains("@")) {
       List<String> parts = inputPeerID.split("@");
       resolvedMatchID = parts[0];
