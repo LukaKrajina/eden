@@ -96,6 +96,9 @@ typedef FreeStringDart = void Function(Pointer<Utf8> str);
 typedef RespondToRequestC = Pointer<Utf8> Function(Pointer<Utf8> peerID, Int32 accept);
 typedef RespondToRequestDart = Pointer<Utf8> Function(Pointer<Utf8> peerID, int accept);
 
+typedef CheckConnectionHealthC = Bool Function();
+typedef CheckConnectionHealthDart = bool Function();
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -139,6 +142,7 @@ class P2PService {
   late UpdateProfileDart _updateProfile;
   late GetPeerProfileDart _getPeerProfile;
   late FreeStringDart _freeString;
+  late CheckConnectionHealthDart _checkConnectionHealth;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -185,6 +189,7 @@ class P2PService {
     _updateProfile = _lib.lookupFunction<UpdateProfileC, UpdateProfileDart>('UpdateProfile');
     _getPeerProfile = _lib.lookupFunction<GetPeerProfileC, GetPeerProfileDart>('GetPeerProfile');
     _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('FreeString');
+    _checkConnectionHealth = _lib.lookupFunction<CheckConnectionHealthC, CheckConnectionHealthDart>('CheckConnectionHealth');
   }
 
   String _consumeNativeString(Pointer<Utf8> ptr) {
@@ -195,6 +200,11 @@ class P2PService {
     } finally {
       _freeString(ptr);
     }
+  }
+
+  bool checkConnectionHealth() {
+    if (!_isInitialized) return false;
+    return _checkConnectionHealth();
   }
 
   void start() {
