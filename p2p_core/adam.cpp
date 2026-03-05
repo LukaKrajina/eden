@@ -139,7 +139,7 @@ extern "C" __declspec(dllexport) void RegisterPacketHandler(GoPacketCallback han
 extern "C" __declspec(dllexport) void InjectVPNPacket(void* data, int len) {
     if (!Session || !IsRunning) return;
 
-    if (len <= 0 || len > 1500) return; 
+    if (len <= 0 || len > 2048) return; 
 
     BYTE* tunPacket = ptrAllocateSendPacket(Session, (DWORD)len);
     if (tunPacket) {
@@ -234,8 +234,11 @@ void ReadFromTunLoop() {
             
             if (packet) {
                 if (ptrSendToP2P && packetSize > 20) {
-                     if ((packet[0] >> 4) == 4 && packet[9] == 17) {
-                         ptrSendToP2P((void*)packet, (int)packetSize);
+                     if ((packet[0] >> 4) == 4) {
+                         BYTE protocol = packet[9];
+                         if (protocol == 17 || protocol == 1 || protocol == 6) {
+                             ptrSendToP2P((void*)packet, (int)packetSize);
+                         }
                      }
                 }
                 
