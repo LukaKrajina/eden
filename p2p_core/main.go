@@ -78,7 +78,6 @@ var (
 	h                 host.Host
 	ctx               context.Context
 	kademliaDHT       *dht.IpfsDHT
-	activeStream      network.Stream
 	streamLock        sync.Mutex
 	pubSub            *pubsub.PubSub
 	blockTopic        *pubsub.Topic
@@ -244,6 +243,8 @@ type MatchAnnouncement struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+var activeStreams = make(map[peer.ID]network.Stream)
+var rendezvousString string
 var MyFriends = make(map[string]FriendInfo)
 var friendMutex sync.RWMutex
 var netStats NetworkStats
@@ -785,12 +786,33 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		return C.CString("Error: Failed to convert to Libp2p Key: " + err.Error())
 	}
 
+	bootstrapPeers := []string{
+		"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+		"/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+		"/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+		"/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+		"/ip4/172.65.0.13/tcp/4009/p2p/QmcfgsJsMtx6qJb74akCw1M24X1zFwgGo11h1cuhwQjtJP",
+	}
+
+	var staticRelays []peer.AddrInfo
+	for _, peerAddr := range bootstrapPeers {
+		addr, err := multiaddr.NewMultiaddr(peerAddr)
+		if err != nil {
+			if peerInfo, err := peer.AddrInfoFromP2pAddr(addr); err == nil {
+				staticRelays = append(staticRelays, *peerInfo)
+			}
+		}
+	}
+
 	h, err = libp2p.New(
 		libp2p.Identity(libp2pKey),
 		libp2p.EnableAutoNATv2(),
 		libp2p.EnableHolePunching(),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/udp/0/quic-v1"),
+		libp2p.EnableRelay(),
+		libp2p.EnableHolePunching(),
+		libp2p.EnableAutoRelayWithStaticRelays(staticRelays),
 	)
 
 	InitializeChain("./eden_db_" + h.ID().String())
@@ -804,40 +826,23 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	kademliaDHT, _ = dht.New(ctx, h)
 	kademliaDHT.Bootstrap(ctx)
 
-	bootstrapPeers := []string{
-		"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-		"/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
-		"/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
-		"/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
-		"/ip4/172.65.0.13/tcp/4009/p2p/QmcfgsJsMtx6qJb74akCw1M24X1zFwgGo11h1cuhwQjtJP",
-	}
-
 	var wg sync.WaitGroup
-	for _, peerAddr := range bootstrapPeers {
-		addr, err := multiaddr.NewMultiaddr(peerAddr)
-		if err != nil {
-			continue
-		}
-
-		peerInfo, err := peer.AddrInfoFromP2pAddr(addr)
-		if err != nil {
-			continue
-		}
-
+	for _, p := range staticRelays {
 		wg.Add(1)
-		go func(p peer.AddrInfo) {
+		go func(pInfo peer.AddrInfo) {
 			defer wg.Done()
-			if err := h.Connect(ctx, p); err != nil {
-				fmt.Printf("[P2P] Failed to connect to bootstrap %s\n", p.ID)
+			if err := h.Connect(ctx, pInfo); err != nil {
+				fmt.Printf("[P2P] Failed to connect to bootstrap %s\n", pInfo.ID)
 			} else {
-				fmt.Printf("[P2P] Connected to Bootstrap Node: %s\n", p.ID)
+				fmt.Printf("[P2P] Connected to Bootstrap Node: %s\n", pInfo.ID)
 			}
-		}(*peerInfo)
+		}(p)
 	}
 	wg.Wait()
 
 	routingDiscovery := routing.NewRoutingDiscovery(kademliaDHT)
-	dutil.Advertise(ctx, routingDiscovery, "eden-cs2-lobby")
+	rendezvousString = "eden-cs2-lobby-v1.0.0-prod"
+	dutil.Advertise(ctx, routingDiscovery, rendezvousString)
 
 	setupPubSub()
 
@@ -848,7 +853,7 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
 		fmt.Println("[P2P] Incoming Game Connection")
 		streamLock.Lock()
-		activeStream = s
+		activeStreams[s.Conn().RemotePeer()] = s
 		streamLock.Unlock()
 		go readStreamLoop(s)
 	})
@@ -1258,9 +1263,13 @@ func GetMatchPassword(matchID *C.char) *C.char {
 //export StopEdenNode
 func StopEdenNode() {
 	streamLock.Lock()
-	if activeStream != nil {
-		activeStream.Close()
+	for _, s := range activeStreams {
+		if s != nil {
+			s.Close()
+		}
 	}
+
+	activeStreams = make(map[peer.ID]network.Stream)
 	streamLock.Unlock()
 	if h != nil {
 		h.Close()
@@ -1798,16 +1807,19 @@ func InitPacketBridge(fn C.InjectVPNPacketFn) {
 }
 
 //export HandleOutboundPacket
-func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
+func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 	streamLock.Lock()
-	s := activeStream
+	streams := make([]network.Stream, 0, len(activeStreams))
+	for _, s := range activeStreams {
+		streams = append(streams, s)
+	}
 	streamLock.Unlock()
 
-	if s == nil {
+	if len(streams) == 0 {
 		return
 	}
 
-	payloadLen := int(len)
+	payloadLen := int(length)
 
 	if payloadLen <= 0 || payloadLen > MaxPayloadSize {
 		return
@@ -1838,7 +1850,9 @@ func HandleOutboundPacket(data unsafe.Pointer, len C.int) {
 	cData := unsafe.Slice((*byte)(data), payloadLen)
 	copy(frame[7:], cData)
 
-	s.Write(frame)
+	for _, s := range streams {
+		s.Write(frame)
+	}
 
 	bufferPool.Put(bufPtr)
 }
@@ -2080,18 +2094,30 @@ func AutoConnectToPeers() *C.char {
 	}
 
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
-	peerChan, _ := rd.FindPeers(ctx, "eden-cs2-lobby")
+	peerChan, _ := rd.FindPeers(ctx, rendezvousString)
 
 	for p := range peerChan {
 		if p.ID == h.ID() || len(p.Addrs) == 0 {
-			continue
+			matchesMutex.RLock()
+			isHost := false
+			for _, m := range networkMatches {
+				if m.HostID == p.ID.String() {
+					isHost = true
+					break
+				}
+			}
+			matchesMutex.RUnlock()
+
+			if !isHost {
+				continue
+			}
 		}
 
 		if h.Connect(ctx, p) == nil {
 			s, err := h.NewStream(ctx, p.ID, ProtocolID)
 			if err == nil {
 				streamLock.Lock()
-				activeStream = s
+				activeStreams[p.ID] = s
 				streamLock.Unlock()
 				go readStreamLoop(s)
 				return C.CString(p.ID.String())
