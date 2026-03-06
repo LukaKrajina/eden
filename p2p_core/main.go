@@ -1694,7 +1694,7 @@ func VerifySteamTrade(tradeOfferID *C.char, expectedAssetID *C.char) C.int {
 		if offer.State == 3 {
 			for _, item := range offer.ItemsToGive {
 				if item.AssetID == aid {
-					settleTx := EdenChain.SettleEscrow(tid)
+					settleTx := EdenChain.SettleEscrowByAsset(aid)
 					if settleTx != nil {
 						newBlock := Block{
 							Index:        EdenChain.LastBlock.Index + 1,

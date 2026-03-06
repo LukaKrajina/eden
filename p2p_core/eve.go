@@ -799,6 +799,14 @@ func (bc *Blockchain) processEscrowLock(tx Transaction) {
 		ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 	}
 	bc.ActiveEscrows[tx.ID] = escrow
+
+	for _, auction := range bc.ActiveAuctions {
+		if auction.AssetID == tx.Payload && auction.State == "OPEN" {
+			auction.State = "LOCKED"
+			fmt.Printf("[Marketplace] Auction for Asset %s locked by Escrow %s\n", tx.Payload, tx.ID)
+			break
+		}
+	}
 }
 
 func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transaction {
@@ -871,23 +879,31 @@ func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transac
 	return payoutTxs
 }
 
-func (bc *Blockchain) SettleEscrow(tradeID string) *Transaction {
+func (bc *Blockchain) SettleEscrowByAsset(assetID string) *Transaction {
 	bc.Mutex.Lock()
 	defer bc.Mutex.Unlock()
 
-	escrow, exists := bc.ActiveEscrows[tradeID]
-	if !exists || escrow.State != "FUNDED" {
+	var targetEscrow *Escrow
+	for _, escrow := range bc.ActiveEscrows {
+		if escrow.AssetID == assetID && escrow.State == "FUNDED" {
+			targetEscrow = escrow
+			break
+		}
+	}
+
+	if targetEscrow == nil {
+		fmt.Printf("[Escrow] Could not find FUNDED escrow for Asset %s\n", assetID)
 		return nil
 	}
 
-	escrow.State = "SETTLED"
+	targetEscrow.State = "SETTLED"
 
 	return &Transaction{
-		ID:        fmt.Sprintf("settle_%s", tradeID),
+		ID:        fmt.Sprintf("settle_%s", targetEscrow.TradeID),
 		Type:      TxTypeTransfer,
 		Sender:    "SYSTEM_PAYOUT",
-		Receiver:  escrow.Seller,
-		Amount:    escrow.Amount,
+		Receiver:  targetEscrow.Seller,
+		Amount:    targetEscrow.Amount,
 		Timestamp: time.Now().Unix(),
 	}
 }
