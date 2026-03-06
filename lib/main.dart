@@ -897,7 +897,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         mode,
         _selectedModeTitle,
         _selectedMap,
-        [],
+        [_myPeerID],
         _recordDemo,
         27015
       );
