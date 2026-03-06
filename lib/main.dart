@@ -890,7 +890,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         default: mode = GameMode.matchmaking; break;
       }
 
-      await widget.matchOrchestrator.hostMatch(
+       var matchId = await widget.matchOrchestrator.hostMatch(
         activePath,
         g_selectedGame,
         "0.0.0.0",
@@ -903,6 +903,12 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       );
       
       setState(() => _status = _lgpkg.get("ServerOnline"));
+
+      if (matchId is String && matchId.isNotEmpty) {
+        String inviteCode = "$matchId@$_myPeerID";
+        Clipboard.setData(ClipboardData(text: inviteCode));
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Server Hosted & Announced via Orchestrator!"),

@@ -15,7 +15,7 @@ class MatchOrchestrator {
 
   MatchOrchestrator(this.gameRunner, this.gsiServer, this.p2pService);
 
-  Future<void> hostMatch(String gamePath,
+  Future<String> hostMatch(String gamePath,
       String gameVersion,
       String virtualIP,
       GameMode mode, 
@@ -48,6 +48,8 @@ class MatchOrchestrator {
     p2pService.advertiseHostLobby(modeTitle, mapName);
 
     _enforceWarmupDeadline(int.parse(config.maxPlayers), matchID);
+
+    return matchID;
   }
 
   void _enforceWarmupDeadline(int requiredPlayers, String matchID) {
