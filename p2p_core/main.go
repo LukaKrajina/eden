@@ -481,6 +481,15 @@ func StartGSIServer() {
 
 			if currentHash != lastBroadcastHash || now-lastBroadcastTime >= 5 {
 				sessionMutex.RLock()
+				EdenChain.Mutex.RLock()
+				var totalPool, poolA, poolB float64
+				if pool, exists := EdenChain.ActivePools[currentMatchID]; exists {
+					totalPool = pool.TotalPool
+					poolA = pool.TeamAPool
+					poolB = pool.TeamBPool
+				}
+				EdenChain.Mutex.RUnlock()
+
 				ann := MatchAnnouncement{
 					MatchID:   currentMatchID,
 					HostID:    h.ID().String(),
@@ -489,6 +498,9 @@ func StartGSIServer() {
 					ScoreT:    state.Map.TeamT.Score,
 					Phase:     "live",
 					Timestamp: now,
+					TotalPool: totalPool,
+					TeamAPool: poolA,
+					TeamBPool: poolB,
 				}
 				sessionMutex.RUnlock()
 
