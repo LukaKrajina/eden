@@ -49,7 +49,6 @@ typedef char* (*AbortMatchFunc)(char* matchID);
 typedef char* (*GetWalletPubKeyFunc)();
 typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
-typedef char* (*AutoConnectToPeersFunc)();
 typedef int (*IsPeerAliveFunc)();
 typedef char* (*GetNetworkMatchesFunc)();
 typedef char* (*FetchMyInventoryFunc)(char* steamID);
