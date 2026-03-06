@@ -117,4 +117,44 @@ class MatchOrchestrator {
     );
     print("[Match] Client launched successfully.");
   }
+
+  Future<void> joinManualMatch(
+    String gamePath, 
+    String gameVersion,
+    String inputString, 
+    String playerName
+  ) async {
+    String matchID = "";
+    String hostPeerID = "";
+
+    if (inputString.contains('@')) {
+      final parts = inputString.split('@');
+      if (parts.length == 2) {
+        matchID = parts[0].trim();
+        hostPeerID = parts[1].trim();
+      } else {
+        print("[Orchestrator] Fatal: Invalid manual join format. Expected MatchID@PeerID.");
+        return;
+      }
+    } else {
+      hostPeerID = inputString.trim();
+      print("[Orchestrator] Public manual join requested. Resolving MatchID for Host $hostPeerID...");
+      final liveMatches = await p2pService.getLiveMatches();
+      for (var match in liveMatches) {
+        if (match['host_id'] == hostPeerID) {
+          matchID = match['match_id'];
+          break;
+        }
+      }
+
+      if (matchID.isEmpty) {
+        print("[Orchestrator] Fatal: Could not find an active public match hosted by $hostPeerID. If this is a private match, use MatchID@PeerID.");
+        return;
+      }
+    }
+
+    print("[Orchestrator] Manual join successfully resolved -> MatchID: $matchID | Host: $hostPeerID");
+    
+    await joinMatch(gamePath, gameVersion, matchID, hostPeerID, playerName);
+  }
 }
