@@ -829,18 +829,23 @@ func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transac
 	netPot := totalPot * (1.0 - CommissionRate)
 
 	if winningPoolTotal == 0 {
-		burnTx := Transaction{
-			ID:        fmt.Sprintf("burn_%s_%d", matchID, time.Now().UnixNano()),
-			Type:      TxTypeResolve,
-			Sender:    "SYSTEM_PAYOUT",
-			Receiver:  "BURN_ADDRESS",
-			Amount:    pool.TotalPool,
-			Timestamp: time.Now().Unix(),
-			Signature: "CONSENSUS_VERIFIED",
+		fmt.Printf("[Betting] No bets placed on the winning team for match %s. Refunding all participants.\n", matchID)
+
+		for i, bet := range pool.Bets {
+			tx := Transaction{
+				ID:        fmt.Sprintf("refund_%s_%d_%d", matchID, time.Now().UnixNano(), i),
+				Type:      TxTypeResolve,
+				Sender:    "SYSTEM_PAYOUT",
+				Receiver:  bet.Bettor,
+				Amount:    bet.Amount,
+				Timestamp: time.Now().Unix(),
+				Signature: "CONSENSUS_VERIFIED",
+			}
+			payoutTxs = append(payoutTxs, tx)
 		}
 
 		delete(bc.ActivePools, matchID)
-		return []Transaction{burnTx}
+		return payoutTxs
 	}
 
 	for _, bet := range pool.Bets {
