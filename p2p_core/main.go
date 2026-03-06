@@ -2172,14 +2172,27 @@ func RespondToFriendRequest(peerID *C.char, accept C.int) *C.char {
 	}
 }
 
+//export AdvertiseHostMode
+func AdvertiseHostMode(mode *C.char) {
+	modeStr := C.GoString(mode)
+	advString := fmt.Sprintf("eden-cs2-%s-v1.0.0-pro", modeStr)
+
+	rd := routing.NewRoutingDiscovery(kademliaDHT)
+	dutil.Advertise(ctx, rd, advString)
+	fmt.Printf("[P2P] Now advertising as host for mode: %s\n", modeStr)
+}
+
 //export AutoConnectToPeers
-func AutoConnectToPeers() *C.char {
+func AutoConnectToPeers(targetMode *C.char) *C.char {
 	if kademliaDHT == nil {
 		return C.CString("DHT Not Ready")
 	}
 
+	modeStr := C.GoString(targetMode)
+	searchString := fmt.Sprintf("eden-cs2-%s-v1.0.0-pro", modeStr)
+
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
-	peerChan, _ := rd.FindPeers(ctx, rendezvousString)
+	peerChan, _ := rd.FindPeers(ctx, searchString)
 
 	for p := range peerChan {
 		if p.ID == h.ID() || len(p.Addrs) == 0 {

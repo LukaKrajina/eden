@@ -789,7 +789,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _status = _lgpkg.get("SearchingMsg");
     });
 
-    String targetPeerID = await widget.p2pService.findMatch();
+    String targetPeerID = await widget.p2pService.findMatch(_selectedModeTitle);
     
     if (!mounted || !_isSearching) return;
 
@@ -883,7 +883,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       
       GameMode mode;
       switch (_selectedModeTitle) {
-        case "TOURNAMENTS": mode = GameMode.championship; break;
+        case "TOURNAMENTS": mode = GameMode.tournaments; break;
         case "DEATHMATCH": mode = GameMode.deathmatch; break;
         case "1V1 HUBS": mode = GameMode.one_one; break;
         case "MATCHMAKING":
@@ -895,6 +895,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         g_selectedGame,
         "0.0.0.0",
         mode,
+        _selectedModeTitle,
         _selectedMap,
         [],
         _recordDemo,

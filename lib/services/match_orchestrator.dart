@@ -19,6 +19,7 @@ class MatchOrchestrator {
       String gameVersion,
       String virtualIP,
       GameMode mode, 
+      String modeTitle,
       String mapName, 
       List<String> roster,  
       bool recordDemo,
@@ -43,6 +44,8 @@ class MatchOrchestrator {
     );
 
     await p2pService.startHostedMatch(matchID, roster, matchPassword);
+
+    p2pService.advertiseHostMode(modeTitle);
 
     _enforceWarmupDeadline(int.parse(config.maxPlayers), matchID);
   }
