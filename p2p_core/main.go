@@ -87,7 +87,9 @@ var (
 	bettingTopic      *pubsub.Topic
 	readyFeedTopic    *pubsub.Topic
 	matchFeedTopic    *pubsub.Topic
+	matchReadyStates  = make(map[string]map[string]bool)
 	networkMatches    = make(map[string]MatchAnnouncement)
+	readyMutex        sync.RWMutex
 	matchesMutex      sync.RWMutex
 
 	matchLive  bool   = false
@@ -150,9 +152,8 @@ type GSIState struct {
 }
 
 type MatchReadyBroadcast struct {
-	MatchID   string `json:"match_id"`
-	PeerID    string `json:"peer_id"`
-	Signature string `json:"signature"`
+	MatchID string `json:"match_id"`
+	PeerID  string `json:"peer_id"`
 }
 
 type LiveMatchSession struct {
@@ -1975,6 +1976,25 @@ func setupPubSub() {
 	}()
 
 	readyFeedTopic, _ = pubSub.Join("eden-match-ready")
+	readySub, _ := readyFeedTopic.Subscribe()
+	go func() {
+		for {
+			msg, err := readySub.Next(ctx)
+			if err != nil {
+				return
+			}
+
+			var ann MatchReadyBroadcast
+			if err := json.Unmarshal(msg.Data, &ann); err == nil {
+				readyMutex.Lock()
+				if matchReadyStates[ann.MatchID] == nil {
+					matchReadyStates[ann.MatchID] = make(map[string]bool)
+				}
+				matchReadyStates[ann.MatchID][ann.PeerID] = true
+				readyMutex.Unlock()
+			}
+		}
+	}()
 
 	matchFeedTopic, _ = pubSub.Join("eden-matches")
 	matchSub, _ := matchFeedTopic.Subscribe()
@@ -2068,12 +2088,53 @@ func BroadcastMatchReady(matchID *C.char) {
 	ann := MatchReadyBroadcast{
 		MatchID: mID,
 		PeerID:  h.ID().String(),
-		// Add signature logic to prevent spoofing
 	}
 
 	if data, err := json.Marshal(ann); err == nil {
 		readyFeedTopic.Publish(ctx, data)
+		readyMutex.Lock()
+		if matchReadyStates[mID] == nil {
+			matchReadyStates[mID] = make(map[string]bool)
+		}
+		matchReadyStates[mID][h.ID().String()] = true
+		readyMutex.Unlock()
 	}
+}
+
+//export GetMatchReadyStates
+func GetMatchReadyStates(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+
+	readyMutex.RLock()
+	defer readyMutex.RUnlock()
+
+	states, exists := matchReadyStates[mID]
+	if !exists {
+		return C.CString("{}")
+	}
+
+	data, _ := json.Marshal(states)
+	return C.CString(string(data))
+}
+
+//export GetMatchRoster
+func GetMatchRoster(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+
+	session, exists := EdenChain.MatchSessions[mID]
+	if !exists {
+		return C.CString("[]")
+	}
+
+	data, err := json.Marshal(session.Roster)
+	if err != nil {
+		return C.CString("[]")
+	}
+
+	return C.CString(string(data))
 }
 
 //export GetMyPeerID

@@ -67,6 +67,9 @@ typedef char* (*AddFriendFunc)(char* code);
 typedef char* (*FetchFriendListFunc)();
 typedef char* (*UpdateMyProfileFunc)(char* username, char* avatarURL);
 typedef char* (*GetPeerProfileFunc)(char* peerID);
+typedef void (*BroadcastMatchReadyFunc)(char* matchID);
+typedef char* (*GetMatchReadyStatesFunc)(char* matchID);
+typedef char* (*GetMatchRosterFunc)(char* matchID);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -94,7 +97,6 @@ PlaceBetFunc ptrPlaceBet = nullptr;
 CreateEscrowFunc ptrCreateEscrow = nullptr;
 VerifyTradeFunc ptrVerifyTrade = nullptr;
 SetSteamAPIKeyFunc ptrSetSteamAPIKey = nullptr;
-static FreeStringFunc ptrFreeString = nullptr;
 RegisterSteamIDFunc ptrRegisterSteamID = nullptr;
 GenerateFriendCodeFunc ptrGenerateFriendCode = nullptr;
 static RespondToFriendRequestFunc ptrRespondToFriendRequest = nullptr;
@@ -102,6 +104,10 @@ AddFriendFunc ptrAddFriend = nullptr;
 FetchFriendListFunc ptrFetchFriendList = nullptr;
 UpdateMyProfileFunc ptrUpdateMyProfile = nullptr;
 GetPeerProfileFunc ptrGetPeerProfile = nullptr;
+static BroadcastMatchReadyFunc ptrBroadcastMatchReady = nullptr;
+static GetMatchReadyStatesFunc ptrGetMatchReadyStates = nullptr;
+static GetMatchRosterFunc ptrGetMatchRoster = nullptr;
+static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
 void ReadFromTunLoop();
@@ -212,6 +218,9 @@ bool LoadGoDLL() {
     ptrFetchFriendList = (FetchFriendListFunc)GetProcAddress(hGo, "FetchFriendList");
     ptrUpdateMyProfile = (UpdateMyProfileFunc)GetProcAddress(hGo, "UpdateMyProfile");
     ptrGetPeerProfile = (GetPeerProfileFunc)GetProcAddress(hGo, "GetPeerProfile");
+    ptrBroadcastMatchReady = (BroadcastMatchReadyFunc)GetProcAddress(hGo, "BroadcastMatchReady");
+    ptrGetMatchReadyStates = (GetMatchReadyStatesFunc)GetProcAddress(hGo, "GetMatchReadyStates");
+    ptrGetMatchRoster = (GetMatchRosterFunc)GetProcAddress(hGo, "GetMatchRoster");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -460,6 +469,24 @@ extern "C" __declspec(dllexport) const char* UpdateProfile(char* username, char*
 extern "C" __declspec(dllexport) const char* GetPeerProfile(char* peerID) {
     if (ptrGetPeerProfile) return ptrGetPeerProfile(peerID);
     return "{}";
+}
+
+extern "C" __declspec(dllexport) void BroadcastMatchReady(char* matchID) {
+    if (ptrBroadcastMatchReady) {
+        ptrBroadcastMatchReady(matchID);
+    }
+}
+
+extern "C" __declspec(dllexport) const char* GetMatchReadyStates(char* matchID) {
+    if (ptrGetMatchReadyStates) {
+        return ptrGetMatchReadyStates(matchID);
+    }
+    return "{}";
+}
+
+extern "C" __declspec(dllexport) const char* GetMatchRoster(char* matchID) {
+    if (ptrGetMatchRoster) return ptrGetMatchRoster(matchID);
+    return "[]";
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {

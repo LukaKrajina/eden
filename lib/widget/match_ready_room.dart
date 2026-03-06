@@ -6,6 +6,8 @@ class MatchReadyRoom extends StatefulWidget {
   final String matchID;
   final String modeTitle;
   final int requiredPlayers;
+  final List<String> rosterPeerIDs;
+  final String myPeerID;
   final Function() onAllReady;
   final Function() onTimeout;
   final P2PService p2pService;
@@ -15,6 +17,8 @@ class MatchReadyRoom extends StatefulWidget {
     required this.matchID,
     required this.modeTitle,
     required this.requiredPlayers,
+    required this.rosterPeerIDs,
+    required this.myPeerID,
     required this.onAllReady,
     required this.onTimeout,
     required this.p2pService,
@@ -28,10 +32,7 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
   int _timeLeft = 120;
   Timer? _timer;
   bool _iAmReady = false;
-  
-  // Simulated roster for the UI. In a real scenario, you'd populate this 
-  // by polling widget.p2pService.getMatchRoster(widget.matchID)
-  List<Map<String, dynamic>> _roster = [];
+  List<Map<String, dynamic>> _rosterUI = [];
 
   @override
   void initState() {
@@ -43,9 +44,12 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
 
   void _initRoster() {
     for (int i = 0; i < widget.requiredPlayers; i++) {
-      _roster.add({
-        "id": "player_$i",
-        "name": i == 0 ? "You" : "Waiting...",
+      String peerID = i < widget.rosterPeerIDs.length ? widget.rosterPeerIDs[i] : "slot_$i";
+      bool isMe = peerID == widget.myPeerID;
+      
+      _rosterUI.add({
+        "id": peerID,
+        "name": isMe ? "You" : (peerID.startsWith("slot_") ? "Waiting..." : "Player ${peerID.substring(peerID.length - 4)}"),
         "isReady": false,
         "team": i < (widget.requiredPlayers / 2) ? "CT" : "T"
       });
@@ -65,17 +69,28 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
   }
 
   void _pollNetworkReadiness() {
-    // Poll the blockchain/P2P layer every second to see who clicked ready
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted || _timeLeft <= 0) {
         timer.cancel();
         return;
       }
-      // TODO: Fetch real-time ready states from the P2P network
-      // Map<String, bool> readyStates = await widget.p2pService.getReadyStates(widget.matchID);
       
-      // If everyone is ready:
-      bool allReady = _roster.every((p) => p['isReady'] == true);
+      Map<String, bool> readyStates = await widget.p2pService.getMatchReadyStates(widget.matchID);
+
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        for (var player in _rosterUI) {
+          if (readyStates.containsKey(player['id']) && readyStates[player['id']] == true) {
+            player['isReady'] = true;
+          }
+        }
+      });
+
+      bool allReady = _rosterUI.every((p) => p['isReady'] == true);
       if (allReady) {
         timer.cancel();
         Navigator.pop(context);
@@ -85,12 +100,8 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
   }
 
   void _markReady() {
-    setState(() {
-      _iAmReady = true;
-      _roster[0]['isReady'] = true; // Mark self as ready visually
-    });
-    // Broadcast to the network
-    // widget.p2pService.broadcastMatchReady(widget.matchID);
+    setState(() => _iAmReady = true);
+    widget.p2pService.broadcastMatchReady(widget.matchID);
   }
 
   @override
@@ -101,14 +112,14 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
 
   @override
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> teamCT = _roster.where((p) => p['team'] == 'CT').toList();
-    List<Map<String, dynamic>> teamT = _roster.where((p) => p['team'] == 'T').toList();
+    List<Map<String, dynamic>> teamCT = _rosterUI.where((p) => p['team'] == 'CT').toList();
+    List<Map<String, dynamic>> teamT = _rosterUI.where((p) => p['team'] == 'T').toList();
 
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 900,
-        height: 600,
+        width: 1000,
+        height: 650,
         decoration: BoxDecoration(
           color: const Color(0xFF121212),
           border: Border.all(color: const Color(0xFFFF6600), width: 2),
@@ -116,6 +127,7 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
         ),
         child: Column(
           children: [
+            // Header
             Container(
               padding: const EdgeInsets.all(20),
               color: const Color(0xFF1F1F1F),
@@ -123,35 +135,34 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text("MATCH FOUND - ${widget.modeTitle}", style: const TextStyle(color: Colors.white, fontSize: 24, fontFamily: "Oswald", fontWeight: FontWeight.bold)),
-                  Text("0${_timeLeft ~/ 60}:${(_timeLeft % 60).toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.redAccent, fontSize: 28, fontFamily: "monospace", fontWeight: FontWeight.bold)),
+                  Text("0${_timeLeft ~/ 60}:${(_timeLeft % 60).toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.redAccent, fontSize: 32, fontFamily: "monospace", fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
             
-            // Grid
+            // Player Cards Grid
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(30.0),
                 child: Row(
                   children: [
-                    Expanded(child: _buildTeamColumn(teamCT, Colors.blueAccent)),
+                    Expanded(child: _buildTeamColumn(teamCT, const Color(0xFF5D79AE))),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 40),
-                      child: Text("VS", style: TextStyle(color: Colors.grey, fontSize: 32, fontFamily: "Oswald", fontStyle: FontStyle.italic)),
+                      child: Text("VS", style: TextStyle(color: Colors.grey, fontSize: 40, fontFamily: "Oswald", fontStyle: FontStyle.italic)),
                     ),
-                    
-                    Expanded(child: _buildTeamColumn(teamT, Colors.orangeAccent)),
+                    Expanded(child: _buildTeamColumn(teamT, const Color(0xFFDE9B35))),
                   ],
                 ),
               ),
             ),
 
-            // Accept Button
+            // Accept Button Bottom Bar
             Container(
               padding: const EdgeInsets.all(24),
               child: SizedBox(
-                width: 300,
-                height: 60,
+                width: 350,
+                height: 70,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _iAmReady ? Colors.green : const Color(0xFFFF6600),
@@ -159,8 +170,8 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
                   ),
                   onPressed: _iAmReady ? null : _markReady,
                   child: Text(
-                    _iAmReady ? "WAITING FOR OTHERS..." : "ACCEPT",
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white),
+                    _iAmReady ? "WAITING FOR PLAYERS..." : "ACCEPT",
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white),
                   ),
                 ),
               ),
@@ -186,7 +197,7 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundColor: isReady ? Colors.green.withOpacity(0.2) : Colors.grey[800],
+                backgroundColor: isReady ? Colors.green.withValues(alpha: 0.2) : Colors.grey[800],
                 child: Icon(Icons.headset_mic, color: isReady ? Colors.green : Colors.white),
               ),
               const SizedBox(width: 16),
@@ -197,12 +208,13 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
                     Text(player['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 4),
                     Text(
-                      isReady ? "READY" : "CONNECTING...", 
-                      style: TextStyle(color: isReady ? Colors.green : Colors.grey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                      isReady ? "READY" : "WAITING", 
+                      style: TextStyle(color: isReady ? Colors.green : Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
                     ),
                   ],
                 ),
               ),
+              if (isReady) const Icon(Icons.check_circle, color: Colors.green),
             ],
           ),
         );

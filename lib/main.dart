@@ -815,15 +815,29 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         _isSearching = false;
         _status = _lgpkg.get("MatchFound");
       });
+
+      List<String> actualRoster = [];
+      int rosterAttempts = 0;
+      
+      while (rosterAttempts < 15) {
+        actualRoster = await widget.p2pService.getMatchRoster(foundMatchID);
+        if (actualRoster.isNotEmpty) {
+          break;
+        }
+        rosterAttempts++;
+        await Future.delayed(const Duration(seconds: 2));
+      }
       
       if (mounted) {
-        showDialog(
+          showDialog(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => MatchReadyRoom(
             matchID: foundMatchID!,
             modeTitle: _selectedModeTitle,
             requiredPlayers: int.parse(_maxPlayers),
+            rosterPeerIDs: actualRoster,
+            myPeerID: _myPeerID,
             p2pService: widget.p2pService,
             onAllReady: () async {
               setState(() => _status = "JOINING MATCH...");
@@ -838,7 +852,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             onTimeout: () {
               setState(() => _status = "MATCH CANCELLED (TIMEOUT)");
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Someone failed to accept the match."), backgroundColor: Colors.red)
+                const SnackBar(content: Text("A player failed to accept the match."), backgroundColor: Colors.red)
               );
             },
           )

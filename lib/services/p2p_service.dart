@@ -90,6 +90,15 @@ typedef UpdateProfileDart = Pointer<Utf8> Function(Pointer<Utf8> username, Point
 typedef GetPeerProfileC = Pointer<Utf8> Function(Pointer<Utf8> id);
 typedef GetPeerProfileDart = Pointer<Utf8> Function(Pointer<Utf8> id);
 
+typedef BroadcastMatchReadyC = Void Function(Pointer<Utf8> matchID);
+typedef BroadcastMatchReadyDart = void Function(Pointer<Utf8> matchID);
+
+typedef GetMatchReadyStatesC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef GetMatchReadyStatesDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+
+typedef GetMatchRosterC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef GetMatchRosterDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+
 typedef FreeStringC = Void Function(Pointer<Utf8> str);
 typedef FreeStringDart = void Function(Pointer<Utf8> str);
 
@@ -141,6 +150,9 @@ class P2PService {
   late RegisterSteamIDDart _registerSteamID;
   late UpdateProfileDart _updateProfile;
   late GetPeerProfileDart _getPeerProfile;
+  late BroadcastMatchReadyDart _broadcastMatchReady;
+  late GetMatchReadyStatesDart _getMatchReadyStates;
+  late GetMatchRosterDart _getMatchRoster;
   late FreeStringDart _freeString;
   late CheckConnectionHealthDart _checkConnectionHealth;
 
@@ -188,6 +200,9 @@ class P2PService {
     _registerSteamID = _lib.lookupFunction<RegisterSteamIDC, RegisterSteamIDDart>('RegisterMySteamID');
     _updateProfile = _lib.lookupFunction<UpdateProfileC, UpdateProfileDart>('UpdateProfile');
     _getPeerProfile = _lib.lookupFunction<GetPeerProfileC, GetPeerProfileDart>('GetPeerProfile');
+    _broadcastMatchReady = _lib.lookupFunction<BroadcastMatchReadyC, BroadcastMatchReadyDart>('BroadcastMatchReady');
+    _getMatchReadyStates = _lib.lookupFunction<GetMatchReadyStatesC, GetMatchReadyStatesDart>('GetMatchReadyStates');
+    _getMatchRoster = _lib.lookupFunction<GetMatchRosterC, GetMatchRosterDart>('GetMatchRoster');
     _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('FreeString');
     _checkConnectionHealth = _lib.lookupFunction<CheckConnectionHealthC, CheckConnectionHealthDart>('CheckConnectionHealth');
   }
@@ -504,6 +519,42 @@ class P2PService {
     } catch (e) {
       print("[P2P] Failed to parse profile JSON: $e");
       return {};
+    }
+  }
+
+  void broadcastMatchReady(String matchID) {
+    if (!_isInitialized) return;
+    final ptr = matchID.toNativeUtf8();
+    _broadcastMatchReady(ptr);
+    calloc.free(ptr);
+  }
+
+  Future<Map<String, bool>> getMatchReadyStates(String matchID) async {
+    if (!_isInitialized) return {};
+    final ptr = matchID.toNativeUtf8();
+    try {
+      final jsonStr = _consumeNativeString(_getMatchReadyStates(ptr));
+      final Map<String, dynamic> raw = jsonDecode(jsonStr);
+      return raw.map((key, value) => MapEntry(key, value as bool));
+    } catch (e) {
+      return {};
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<List<String>> getMatchRoster(String matchID) async {
+    if (!_isInitialized) return [];
+    final ptr = matchID.toNativeUtf8();
+    try {
+      final jsonStr = _consumeNativeString(_getMatchRoster(ptr));
+      final List<dynamic> raw = jsonDecode(jsonStr);
+      return raw.cast<String>();
+    } catch (e) {
+      print("[P2P] Failed to parse roster JSON: $e");
+      return [];
+    } finally {
+      calloc.free(ptr);
     }
   }
 }
