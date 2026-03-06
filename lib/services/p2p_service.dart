@@ -36,11 +36,11 @@ typedef GetMyPublicKeyDart = Pointer<Utf8> Function();
 typedef GetDashboardDataC = Void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
 typedef GetDashboardDataDart = void Function(Pointer<Bool> isMounted, Pointer<Utf8> dateOut);
 
-typedef FindMatchC = Pointer<Utf8> Function(Pointer<Utf8> mode);
-typedef FindMatchDart = Pointer<Utf8> Function(Pointer<Utf8> mode);
+typedef FindMatchC = Pointer<Utf8> Function(Pointer<Utf8> mode, Pointer<Utf8> mapName);
+typedef FindMatchDart = Pointer<Utf8> Function(Pointer<Utf8> mode, Pointer<Utf8> mapName);
 
-typedef AdvertiseHostModeC = Void Function(Pointer<Utf8> mode);
-typedef AdvertiseHostModeDart = void Function(Pointer<Utf8> mode);
+typedef AdvertiseHostLobbyC = Void Function(Pointer<Utf8> mode, Pointer<Utf8> mapName);
+typedef AdvertiseHostLobbyDart = void Function(Pointer<Utf8> mode, Pointer<Utf8> mapName);
 
 typedef MineBlockC = Pointer<Utf8> Function(Int32 duration, Int32 playerCount);
 typedef MineBlockDart = Pointer<Utf8> Function(int duration, int playerCount);
@@ -156,7 +156,7 @@ class P2PService {
   late BroadcastMatchReadyDart _broadcastMatchReady;
   late GetMatchReadyStatesDart _getMatchReadyStates;
   late GetMatchRosterDart _getMatchRoster;
-  late AdvertiseHostModeDart _advertiseHostMode;
+  late AdvertiseHostLobbyDart _advertiseHostLobby;
   late FreeStringDart _freeString;
   late CheckConnectionHealthDart _checkConnectionHealth;
 
@@ -186,7 +186,7 @@ class P2PService {
     _getMyPublicKey = _lib.lookupFunction<GetMyPublicKeyC, GetMyPublicKeyDart>('GetMyPublicKey');
     _getDashboardData = _lib.lookupFunction<GetDashboardDataC, GetDashboardDataDart>('GetDashboardData');
     _findMatch = _lib.lookupFunction<FindMatchC, FindMatchDart>('FindMatch');
-    _advertiseHostMode = _lib.lookupFunction<AdvertiseHostModeC, AdvertiseHostModeDart>('AdvertiseHostMode');
+    _advertiseHostLobby = _lib.lookupFunction<AdvertiseHostLobbyC, AdvertiseHostLobbyDart>('AdvertiseHostLobby');
     _mineBlock = _lib.lookupFunction<MineBlockC, MineBlockDart>('MineBlock');
     _getBalance = _lib.lookupFunction<GetBalanceC, GetBalanceDart>('GetBalance');
     _sendTx = _lib.lookupFunction<SendTxC, SendTxDart>('SendEdenCoin');
@@ -296,21 +296,25 @@ class P2PService {
     }
   }
 
-  Future<String> findMatch(String mode) async {
+  Future<String> findMatch(String mode, String mapName) async {
     if (!_isInitialized) return "Error: Engine Not Loaded";
     final modePtr = mode.toNativeUtf8();
+    final mapPtr = mapName.toNativeUtf8();
     try {
-      return _consumeNativeString(_findMatch(modePtr));
+      return _consumeNativeString(_findMatch(modePtr, mapPtr));
     } finally {
       calloc.free(modePtr);
+      calloc.free(mapPtr);
     }
   }
 
-  void advertiseHostMode(String mode) {
+  void advertiseHostLobby(String mode, String mapName) {
     if (!_isInitialized) return;
     final modePtr = mode.toNativeUtf8();
-    _advertiseHostMode(modePtr);
+    final mapPtr = mapName.toNativeUtf8();
+    _advertiseHostLobby(modePtr, mapPtr);
     calloc.free(modePtr);
+    calloc.free(mapPtr);
   }
 
   Future<String> startHostedMatch(String matchID, List<String> players, String password) async {

@@ -45,7 +45,7 @@ class MatchOrchestrator {
 
     await p2pService.startHostedMatch(matchID, roster, matchPassword);
 
-    p2pService.advertiseHostMode(modeTitle);
+    p2pService.advertiseHostLobby(modeTitle, mapName);
 
     _enforceWarmupDeadline(int.parse(config.maxPlayers), matchID);
   }

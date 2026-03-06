@@ -70,8 +70,8 @@ typedef char* (*GetPeerProfileFunc)(char* peerID);
 typedef void (*BroadcastMatchReadyFunc)(char* matchID);
 typedef char* (*GetMatchReadyStatesFunc)(char* matchID);
 typedef char* (*GetMatchRosterFunc)(char* matchID);
-typedef char* (*AutoConnectToPeersFunc)(char* mode);
-typedef void (*AdvertiseHostModeFunc)(char* mode);
+typedef char* (*AutoConnectToPeersFunc)(char* mode, char* mapName);
+typedef void (*AdvertiseHostLobbyFunc)(char* mode, char* mapName);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -109,7 +109,7 @@ GetPeerProfileFunc ptrGetPeerProfile = nullptr;
 static BroadcastMatchReadyFunc ptrBroadcastMatchReady = nullptr;
 static GetMatchReadyStatesFunc ptrGetMatchReadyStates = nullptr;
 static GetMatchRosterFunc ptrGetMatchRoster = nullptr;
-AdvertiseHostModeFunc ptrAdvertiseHostMode = nullptr;
+AdvertiseHostLobbyFunc ptrAdvertiseHostLobby = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -224,7 +224,7 @@ bool LoadGoDLL() {
     ptrBroadcastMatchReady = (BroadcastMatchReadyFunc)GetProcAddress(hGo, "BroadcastMatchReady");
     ptrGetMatchReadyStates = (GetMatchReadyStatesFunc)GetProcAddress(hGo, "GetMatchReadyStates");
     ptrGetMatchRoster = (GetMatchRosterFunc)GetProcAddress(hGo, "GetMatchRoster");
-    ptrAdvertiseHostMode = (AdvertiseHostModeFunc)GetProcAddress(hGo, "AdvertiseHostMode");
+    ptrAdvertiseHostLobby = (AdvertiseHostLobbyFunc)GetProcAddress(hGo, "AdvertiseHostLobby");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -344,16 +344,16 @@ extern "C" __declspec(dllexport) bool CheckConnectionHealth() {
     return false;
 }
 
-extern "C" __declspec(dllexport) char* FindMatch(char* mode) {
+extern "C" __declspec(dllexport) char* FindMatch(char* mode, char* mapName) {
     if (ptrAutoConnect) {
-        return ptrAutoConnect(mode); 
+        return ptrAutoConnect(mode, mapName); 
     }
     return (char*)"Error";
 }
 
-extern "C" __declspec(dllexport) void AdvertiseHostMode(char* mode) {
-    if (ptrAdvertiseHostMode) {
-        ptrAdvertiseHostMode(mode);
+extern "C" __declspec(dllexport) void AdvertiseHostLobby(char* mode, char* mapName) {
+    if (ptrAdvertiseHostLobby) {
+        ptrAdvertiseHostLobby(mode, mapName);
     }
 }
 

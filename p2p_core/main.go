@@ -2172,10 +2172,11 @@ func RespondToFriendRequest(peerID *C.char, accept C.int) *C.char {
 	}
 }
 
-//export AdvertiseHostMode
-func AdvertiseHostMode(mode *C.char) {
+//export AdvertiseHostLobby
+func AdvertiseHostLobby(mode *C.char, mapName *C.char) {
 	modeStr := C.GoString(mode)
-	advString := fmt.Sprintf("eden-cs2-%s-v1.0.0-pro", modeStr)
+	mapStr := C.GoString(mapName)
+	advString := fmt.Sprintf("eden-cs2-%s-%s-v1.0.0-pro", modeStr, mapStr)
 
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, rd, advString)
@@ -2183,13 +2184,14 @@ func AdvertiseHostMode(mode *C.char) {
 }
 
 //export AutoConnectToPeers
-func AutoConnectToPeers(targetMode *C.char) *C.char {
+func AutoConnectToPeers(targetMode *C.char, targetMap *C.char) *C.char {
 	if kademliaDHT == nil {
 		return C.CString("DHT Not Ready")
 	}
 
 	modeStr := C.GoString(targetMode)
-	searchString := fmt.Sprintf("eden-cs2-%s-v1.0.0-pro", modeStr)
+	mapStr := C.GoString(targetMap)
+	searchString := fmt.Sprintf("eden-cs2-%s-%s-v1.0.0-pro", modeStr, mapStr)
 
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
 	peerChan, _ := rd.FindPeers(ctx, searchString)

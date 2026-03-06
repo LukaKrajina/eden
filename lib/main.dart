@@ -789,7 +789,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _status = _lgpkg.get("SearchingMsg");
     });
 
-    String targetPeerID = await widget.p2pService.findMatch(_selectedModeTitle);
+    String targetPeerID = await widget.p2pService.findMatch(_selectedModeTitle, _selectedMap);
     
     if (!mounted || !_isSearching) return;
 
