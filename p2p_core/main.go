@@ -2265,7 +2265,22 @@ func ConnectToPeer(peerID *C.char) {
 		return
 	}
 
-	h.Connect(ctx, peerInfo)
+	if err := h.Connect(ctx, peerInfo); err == nil {
+		s, err := h.NewStream(ctx, targetID, ProtocolID)
+		if err == nil {
+			streamLock.Lock()
+			activeStreams[targetID] = s
+			streamLock.Unlock()
+			go readStreamLoop(s)
+			fmt.Printf("[P2P] Successfully connected and opened stream to %s\n", pIDStr)
+		} else {
+			fmt.Printf("[P2P] Connected, but failed to open data stream: %v\n", err)
+		}
+
+		go TriggerSync(targetID)
+	} else {
+		fmt.Printf("[P2P] Failed to connect to peer: %v\n", err)
+	}
 }
 
 //export IsPeerAlive
