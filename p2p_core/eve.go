@@ -737,14 +737,31 @@ func (bc *Blockchain) processListing(tx Transaction) {
 }
 
 func (bc *Blockchain) processExpiration(tx Transaction, blockTime int64) {
-	auctionID := tx.Payload
+	id := tx.Payload
 
-	if auction, exists := bc.ActiveAuctions[auctionID]; exists {
+	if auction, exists := bc.ActiveAuctions[id]; exists {
 		if auction.State == "OPEN" && blockTime >= auction.ExpiresAt {
 			auction.State = "EXPIRED"
-			fmt.Printf("[Chain] Auction %s finalized as EXPIRED at block time %d.\n", auctionID, blockTime)
+			fmt.Printf("[Chain] Auction %s finalized as EXPIRED at block time %d.\n", id, blockTime)
 		} else {
-			fmt.Printf("[Chain] consensus rejected expiration for %s (Not yet time).\n", auctionID)
+			fmt.Printf("[Chain] consensus rejected expiration for auction %s (Not yet time).\n", id)
+		}
+		return
+	}
+
+	if escrow, exists := bc.ActiveEscrows[id]; exists {
+		if escrow.State == "FUNDED" && blockTime >= escrow.ExpiresAt {
+			escrow.State = "REFUNDED"
+			bc.Balances[escrow.Buyer] += escrow.Amount
+			for _, auction := range bc.ActiveAuctions {
+				if auction.AssetID == escrow.AssetID && auction.State == "LOCKED" {
+					auction.State = "OPEN"
+					break
+				}
+			}
+			fmt.Printf("[Chain] Escrow %s EXPIRED. Refunded %.2f EDN to buyer %s.\n", id, escrow.Amount, escrow.Buyer)
+		} else {
+			fmt.Printf("[Chain] consensus rejected expiration for escrow %s (Not yet time).\n", id)
 		}
 	}
 }

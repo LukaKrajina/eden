@@ -1473,6 +1473,12 @@ func TriggerExpirationCleanup() *C.char {
 			toClose = append(toClose, k)
 		}
 	}
+
+	for k, v := range EdenChain.ActiveEscrows {
+		if v.State == "FUNDED" && v.ExpiresAt <= now {
+			toClose = append(toClose, k)
+		}
+	}
 	EdenChain.Mutex.RUnlock()
 
 	if len(toClose) == 0 {
