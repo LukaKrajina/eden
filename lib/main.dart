@@ -1765,21 +1765,18 @@ Widget _buildBettingContent() {
       itemBuilder: (ctx, i) {
         final m = _liveMatches[i];
         final amountCtrl = TextEditingController();
+        double totalPool = (m['total_pool'] ?? 0.0).toDouble();
+        double poolCT = (m['team_a_pool'] ?? 0.0).toDouble();
+        double poolT = (m['team_b_pool'] ?? 0.0).toDouble();
+        double oddsCT = 1.92; 
+        double oddsT = 1.92;
+        const double commissionRate = 0.04;
 
-        int scoreCT = m['score_ct'];
-        int scoreT = m['score_t'];
-        int total = scoreCT + scoreT;
-        double oddsCT = 1.8; 
-        double oddsT = 1.8;
-
-        if (total > 0) {
-          if (scoreCT > scoreT) {
-            oddsCT = 1.2 + (scoreT / total);
-            oddsT = 2.0 + ((scoreCT - scoreT) * 0.1);
-          } else if (scoreT > scoreCT) {
-            oddsT = 1.2 + (scoreCT / total);
-            oddsCT = 2.0 + ((scoreT - scoreCT) * 0.1);
-          }
+        if (totalPool > 0) {
+          double netPot = totalPool * (1.0 - commissionRate);
+          
+          oddsCT = poolCT > 0 ? (netPot / poolCT) : (netPot > 1.92 ? netPot : 1.92);
+          oddsT = poolT > 0 ? (netPot / poolT) : (netPot > 1.92 ? netPot : 1.92);
         }
 
         return Container(
@@ -1800,6 +1797,8 @@ Widget _buildBettingContent() {
                     child: Text(_lgpkg.get("LiveTag"), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                   const Spacer(),
+                  Text("POOL: ${totalPool.toStringAsFixed(2)} EDN", style: const TextStyle(color: kEdenOrange, fontSize: 10, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 10),
                   Text(m['map_name'].toString().toUpperCase(), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -1810,14 +1809,14 @@ Widget _buildBettingContent() {
                   Column(
                     children: [
                       const Text("CT", style: TextStyle(color: Color(0xFF5D79AE), fontWeight: FontWeight.bold)),
-                      Text("${m['score_ct']}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text("${m['score_ct'] ?? 0}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const Text("VS", style: TextStyle(color: Colors.grey)),
                   Column(
                     children: [
                       const Text("T", style: TextStyle(color: Color(0xFFDE9B35), fontWeight: FontWeight.bold)),
-                      Text("${m['score_t']}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text("${m['score_t'] ?? 0}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],
