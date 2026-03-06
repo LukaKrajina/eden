@@ -242,13 +242,16 @@ type RichItem struct {
 }
 
 type MatchAnnouncement struct {
-	MatchID   string `json:"match_id"`
-	HostID    string `json:"host_id"`
-	MapName   string `json:"map_name"`
-	ScoreCT   int    `json:"score_ct"`
-	ScoreT    int    `json:"score_t"`
-	Phase     string `json:"phase"`
-	Timestamp int64  `json:"timestamp"`
+	MatchID   string  `json:"match_id"`
+	HostID    string  `json:"host_id"`
+	MapName   string  `json:"map_name"`
+	ScoreCT   int     `json:"score_ct"`
+	ScoreT    int     `json:"score_t"`
+	Phase     string  `json:"phase"`
+	Timestamp int64   `json:"timestamp"`
+	TotalPool float64 `json:"total_pool"`
+	TeamAPool float64 `json:"team_a_pool"`
+	TeamBPool float64 `json:"team_b_pool"`
 }
 
 var activeStreams = make(map[peer.ID]network.Stream)
