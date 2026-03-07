@@ -40,6 +40,9 @@ const (
 	TxTypeWitness         = "MATCH_WITNESS"
 	TxTypeUpdateProfile   = "UPDATE_PROFILE"
 	TxTypeMatchResult     = "MATCH_RESULT"
+
+	AbelScale = 173.7178
+	Tau       = 0.5
 )
 
 type Transaction struct {
@@ -64,16 +67,18 @@ type GameProof struct {
 }
 
 type UserProfile struct {
-	PeerID    string  `json:"peer_id"`
-	SteamID   string  `json:"steam_id"`
-	Username  string  `json:"username"`
-	AvatarURL string  `json:"avatar_url"`
-	XP        float64 `json:"xp"`
-	Level     int     `json:"level"`
-	Score     float64 `json:"score"`
-	AvgRating float64 `json:"avg_rating"`
-	Matches   int     `json:"matches"`
-	Wins      int     `json:"wins"`
+	PeerID     string  `json:"peer_id"`
+	SteamID    string  `json:"steam_id"`
+	Username   string  `json:"username"`
+	AvatarURL  string  `json:"avatar_url"`
+	XP         float64 `json:"xp"`
+	Level      int     `json:"level"`
+	Rating     float64 `json:"rating"`
+	AvgRating  float64 `json:"avg_rating"`
+	Matches    int     `json:"matches"`
+	Wins       int     `json:"wins"`
+	Deviation  float64 `json:"deviation"`
+	Volatility float64 `json:"volatility"`
 }
 
 type Auction struct {
@@ -226,16 +231,18 @@ func (bc *Blockchain) GetOrInitProfile(peerID string) *UserProfile {
 	}
 
 	newProfile := &UserProfile{
-		PeerID:    peerID,
-		SteamID:   "",
-		Username:  GenerateFixedUsername(peerID),
-		AvatarURL: "",
-		XP:        0,
-		Level:     0,
-		Score:     0.0,
-		AvgRating: 1.0,
-		Matches:   0,
-		Wins:      0,
+		PeerID:     peerID,
+		SteamID:    "",
+		Username:   GenerateFixedUsername(peerID),
+		AvatarURL:  "",
+		XP:         0,
+		Level:      0,
+		Rating:     1500.0,
+		AvgRating:  1.0,
+		Matches:    0,
+		Wins:       0,
+		Deviation:  350.0,
+		Volatility: 0.06,
 	}
 	bc.Profiles[peerID] = newProfile
 	return newProfile
@@ -387,9 +394,10 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				Win           bool    `json:"win"`
 				HLTVRating    float64 `json:"hltv_rating"`
 				TeamAvgRating float64 `json:"team_avg_rating"`
+				TeamAvgDev    float64 `json:"team_avg_dev"`
 			}
 			if err := json.Unmarshal([]byte(tx.Payload), &res); err == nil {
-				bc.processMatchProgression(res.TargetID, res.Win, res.HLTVRating, res.TeamAvgRating)
+				bc.processMatchProgression(res.TargetID, res.Win, res.HLTVRating, res.TeamAvgRating, res.TeamAvgDev)
 			}
 
 		case TxTypeRegisterFriend:
@@ -417,7 +425,7 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 
 		case TxTypeMatchStart:
 			parts := strings.Split(tx.Payload, "|")
-			if len(parts) == 2 {
+			if len(parts) >= 2 {
 				matchID := parts[0]
 				players := strings.Split(parts[1], ",")
 				bc.MatchSessions[matchID] = MatchSessionInfo{
@@ -545,10 +553,75 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 	return true
 }
 
+func abelG(phi float64) float64 {
+	return 1.0 / math.Sqrt(1.0+3.0*phi*phi/(math.Pi*math.Pi))
+}
+
+func abelE(mu, mu_j, phi_j float64) float64 {
+	return 1.0 / (1.0 + math.Exp(-abelG(phi_j)*(mu-mu_j)))
+}
+
+func CalculateAbel2(pRating, pDev, oppRating, oppDev float64, outcome float64) (float64, float64) {
+	mu := (pRating - 1500.0) / AbelScale
+	phi := pDev / AbelScale
+	mu_j := (oppRating - 1500.0) / AbelScale
+	phi_j := oppDev / AbelScale
+
+	g_phi_j := abelG(phi_j)
+	e_val := abelE(mu, mu_j, phi_j)
+
+	v := 1.0 / (g_phi_j * g_phi_j * e_val * (1.0 - e_val))
+
+	delta := v * g_phi_j * (outcome - e_val)
+
+	phiStar := math.Sqrt(phi*phi + 0.06*0.06)
+	newPhi := 1.0 / math.Sqrt((1.0/(phiStar*phiStar))+(1.0/v))
+	newMu := mu + newPhi*newPhi*(delta/v)
+
+	finalRating := (newMu * AbelScale) + 1500.0
+	finalDev := newPhi * AbelScale
+
+	if finalDev < 30.0 {
+		finalDev = 30.0
+	}
+
+	return finalRating, finalDev
+}
+
 func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string, playerRatings map[string]float64, playerTeams map[string]string) {
 	mvpPeerID := ""
 	if pid, ok := bc.SteamToPeerID[mvpSteamID]; ok {
 		mvpPeerID = pid
+	}
+
+	var ctTotalRating, ctTotalDev, tTotalRating, tTotalDev float64
+	var ctCount, tCount float64
+
+	for _, peerID := range roster {
+		profile := bc.GetOrInitProfile(peerID)
+		team := playerTeams[peerID]
+
+		if team == "CT" {
+			ctTotalRating += profile.Rating
+			ctTotalDev += profile.Deviation
+			ctCount++
+		} else if team == "T" {
+			tTotalRating += profile.Rating
+			tTotalDev += profile.Deviation
+			tCount++
+		}
+	}
+
+	ctAvgRating, ctAvgDev := 1500.0, 350.0
+	if ctCount > 0 {
+		ctAvgRating = ctTotalRating / ctCount
+		ctAvgDev = ctTotalDev / ctCount
+	}
+
+	tAvgRating, tAvgDev := 1500.0, 350.0
+	if tCount > 0 {
+		tAvgRating = tTotalRating / tCount
+		tAvgDev = tTotalDev / tCount
 	}
 
 	var teamTotalRating float64
@@ -556,19 +629,22 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 		teamTotalRating += playerRatings[peerID]
 	}
 
-	teamAvg := 1.0
-	if len(roster) > 0 && teamTotalRating > 0 {
-		teamAvg = teamTotalRating / float64(len(roster))
-	}
-
 	for _, peerID := range roster {
 		isMVP := (peerID == mvpPeerID)
 		playerTeam := playerTeams[peerID]
 		didWin := (playerTeam == winnerTeam)
-
 		rating := playerRatings[peerID]
 		if rating == 0 {
 			rating = 1.0
+		}
+
+		var oppTeamAvgRating, oppTeamAvgDev float64
+		if playerTeam == "CT" {
+			oppTeamAvgRating = tAvgRating
+			oppTeamAvgDev = tAvgDev
+		} else {
+			oppTeamAvgRating = ctAvgRating
+			oppTeamAvgDev = ctAvgDev
 		}
 
 		payloadMap := map[string]interface{}{
@@ -581,8 +657,7 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 		if data, err := json.Marshal(payloadMap); err == nil {
 			fmt.Printf("[XP] Processing Virtual Update: %s\n", string(data))
 		}
-
-		bc.processMatchProgression(peerID, didWin, rating, teamAvg)
+		bc.processMatchProgression(peerID, didWin, rating, oppTeamAvgRating, oppTeamAvgDev)
 	}
 }
 
@@ -644,7 +719,7 @@ func DecryptPassword(aesKey []byte, encryptedBase64 string) string {
 	return string(plaintext)
 }
 
-func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRating float64, teamAvg float64) {
+func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRating float64, oppTeamAvgRating float64, oppTeamAvgDev float64) {
 	profile := bc.GetOrInitProfile(peerID)
 
 	profile.Matches++
@@ -673,52 +748,47 @@ func (bc *Blockchain) processMatchProgression(peerID string, win bool, hltvRatin
 
 	profile.Level = newLevel
 
-	scoreDelta := 0.0
-	const BaseScoreChange = 25.0
-
-	safeTeamAvg := teamAvg
-	if safeTeamAvg < 0.1 {
-		safeTeamAvg = 1.0
+	outcome := 0.0
+	if win {
+		outcome = 1.0
 	}
+
+	newRating, newDev := CalculateAbel2(profile.Rating, profile.Deviation, oppTeamAvgRating, oppTeamAvgDev, outcome)
+
+	scoreDelta := 0.0
+	const BaseScoreChange = 15.0
+	expectedScore := 1.0 / (1.0 + math.Pow(10, (oppTeamAvgRating-profile.Rating)/400.0))
+
+	var actualScore float64
+	if win {
+		actualScore = 1.0
+	} else {
+		actualScore = 0.0
+	}
+
+	scoreDelta = BaseScoreChange * (actualScore - expectedScore)
+
 	safePlayerRating := hltvRating
 	if safePlayerRating < 0.1 {
-		safePlayerRating = 0.5
+		safePlayerRating = 0.1
 	}
 
-	if win {
-		ratio := hltvRating / safeTeamAvg
-		if teamAvg == 0 {
-			ratio = 1.0
-		}
-		scoreDelta = BaseScoreChange * ratio
-	} else {
-		ratio := safeTeamAvg / hltvRating
-		if hltvRating == 0 {
-			ratio = 2.0
-		}
-		scoreDelta = -(BaseScoreChange * ratio)
-	}
+	performanceModifier := scoreDelta * safePlayerRating
+	oldRating := profile.Rating
+	profile.Rating = newRating + performanceModifier
+	profile.Deviation = newDev
 
-	profile.Score += scoreDelta
-	if profile.Score < 0 {
-		profile.Score = 0
-	}
-
-	fmt.Printf("[Progression] %s | XP +%.0f (Lvl %d) | Score %+.2f (%.2f)\n",
-		profile.Username, xpGain, profile.Level, scoreDelta, profile.Score)
+	fmt.Printf("[Progression] %s | Lvl %d | Rating %.2f (Change: %+.2f) | RD %.2f\n",
+		profile.Username, profile.Level, profile.Rating, profile.Rating-oldRating, profile.Deviation)
 }
 
 func (bc *Blockchain) processListing(tx Transaction) {
-	var assetID string
-	var duration int
-	fmt.Sscanf(tx.Payload, "%s:%d", &assetID, &duration)
-
 	parts := strings.Split(tx.Payload, "|")
 	if len(parts) < 5 {
 		return
 	}
 
-	duration, _ = strconv.Atoi(parts[4])
+	duration, _ := strconv.Atoi(parts[4])
 
 	auction := &Auction{
 		ID:        tx.ID,
@@ -733,7 +803,7 @@ func (bc *Blockchain) processListing(tx Transaction) {
 	}
 
 	bc.ActiveAuctions[tx.ID] = auction
-	fmt.Printf("[Chain] New Auction Listed: %s for %.2f EDN\n", assetID, tx.Amount)
+	fmt.Printf("[Chain] New Auction Listed: %s for %.2f EDN\n", parts[0], tx.Amount)
 }
 
 func (bc *Blockchain) processExpiration(tx Transaction, blockTime int64) {

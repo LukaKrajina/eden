@@ -263,7 +263,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _nameController = TextEditingController(text: widget.steam.getPlayerName());
     _cs2PathController.text = g_CS2Path;
     _csgoPathController.text = g_CSGOPath;
-    _cs2PathController.text = g_CSGOServerPath;
+    _csgoServerPathController.text = g_CSGOServerPath;
     _dbUserController.text = g_dbUser;
     _dbPassController.text = g_DbPassword;
     _steamIDKeyController.text = g_steamIDKey;

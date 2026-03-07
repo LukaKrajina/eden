@@ -6,6 +6,8 @@ package main
 
 typedef void (*InjectVPNPacketFn)(void* data, int len);
 
+typedef void (*MatchFoundCallbackFn)(char* matchID, char* hostID, char* rosterList);
+
 static InjectVPNPacketFn ptrInjectVPNPacket = NULL;
 
 static void SetInjectPacketPointer(InjectVPNPacketFn ptr) {
@@ -19,8 +21,21 @@ static void CallInjectVPNPacket(void* data, int len) {
 }
 
 extern void HandleOutboundPacket(void* data, int len);
+
 static void* GetGoCallback() {
     return (void*)HandleOutboundPacket;
+}
+
+static MatchFoundCallbackFn ptrMatchFoundCallback = NULL;
+
+static void SetMatchFoundCallback(MatchFoundCallbackFn ptr) {
+    ptrMatchFoundCallback = ptr;
+}
+
+static void CallMatchFound(char* matchID, char* hostID, char* rosterList) {
+    if (ptrMatchFoundCallback != NULL) {
+        ptrMatchFoundCallback(matchID, hostID, rosterList);
+    }
 }
 */
 import "C"
@@ -65,13 +80,15 @@ var SteamAPIKey = os.Getenv("STEAM_API_KEY")
 const GSI_PORT = "127.0.0.1:3000"
 const MaxPayloadSize = 2048
 const (
-	FrameGame        = 0x01
-	FrameHeartbeat   = 0x02
-	ProtocolID       = "/eden-cs2/1.0.0"
-	SyncProtocolID   = "/eden/sync/1.0.0"
-	FriendProtocolID = "/eden/friend/1.0.0"
-	FriendsDBFile    = "friends.json"
-	TopicName        = "eden-consensus-v1"
+	FrameGame         = 0x01
+	FrameHeartbeat    = 0x02
+	ProtocolID        = "/eden-cs2/1.0.0"
+	SyncProtocolID    = "/eden/sync/1.0.0"
+	FriendProtocolID  = "/eden/friend/1.0.0"
+	FriendsDBFile     = "friends.json"
+	TopicName         = "eden-consensus-v1"
+	QueueTopicName    = "eden-queue-v1"
+	ProposalTopicName = "eden-proposals-v1"
 )
 
 var (
@@ -89,6 +106,15 @@ var (
 	matchFeedTopic    *pubsub.Topic
 	matchReadyStates  = make(map[string]map[string]bool)
 	networkMatches    = make(map[string]MatchAnnouncement)
+	queueTopic        *pubsub.Topic
+	proposalTopic     *pubsub.Topic
+	activeTickets     = make(map[string]MatchmakingTicket)
+	queueMutex        sync.RWMutex
+	inQueue           bool
+	myCurrentTicket   string
+	bestProposal      LobbyProposal
+	proposalTimer     *time.Timer
+	proposalMutex     sync.Mutex
 	readyMutex        sync.RWMutex
 	matchesMutex      sync.RWMutex
 
@@ -149,6 +175,24 @@ type GSIState struct {
 			RoundKills int `json:"round_kills"`
 		} `json:"state"`
 	} `json:"player"`
+}
+
+type MatchmakingTicket struct {
+	TicketID     string   `json:"ticket_id"`
+	LeaderID     string   `json:"leader_id"`
+	PartyMembers []string `json:"party_members"`
+	AverageElo   float64  `json:"average_elo"`
+	Mode         string   `json:"mode"`
+	Timestamp    int64    `json:"timestamp"`
+}
+
+type LobbyProposal struct {
+	ProposalID string   `json:"proposal_id"`
+	HostID     string   `json:"host_id"`
+	Mode       string   `json:"mode"`
+	Players    []string `json:"players"`
+	AverageElo float64  `json:"average_elo"`
+	Timestamp  int64    `json:"timestamp"`
 }
 
 type MatchReadyBroadcast struct {
@@ -2088,6 +2132,50 @@ func setupPubSub() {
 			}
 		}
 	}()
+
+	queueTopic, err = pubSub.Join(QueueTopicName)
+	if err == nil {
+		queueSub, _ := queueTopic.Subscribe()
+		go func() {
+			for {
+				msg, err := queueSub.Next(ctx)
+				if err != nil {
+					return
+				}
+
+				var ticket MatchmakingTicket
+				if err := json.Unmarshal(msg.Data, &ticket); err == nil {
+					queueMutex.Lock()
+					activeTickets[ticket.TicketID] = ticket
+					queueMutex.Unlock()
+					if inQueue {
+						go TryFormLobby(ticket.Mode)
+					}
+				}
+			}
+		}()
+	}
+
+	proposalTopic, err = pubSub.Join(ProposalTopicName)
+	if err == nil {
+		proposalSub, _ := proposalTopic.Subscribe()
+		go func() {
+			for {
+				msg, err := proposalSub.Next(ctx)
+				if err != nil {
+					return
+				}
+				if msg.ReceivedFrom == h.ID() {
+					continue
+				}
+
+				var proposal LobbyProposal
+				if err := json.Unmarshal(msg.Data, &proposal); err == nil {
+					go HandleLobbyProposal(proposal)
+				}
+			}
+		}()
+	}
 }
 
 func broadcastBlock(b Block) {
@@ -2096,6 +2184,182 @@ func broadcastBlock(b Block) {
 	}
 	data, _ := json.Marshal(b)
 	blockTopic.Publish(ctx, data)
+}
+
+func TryFormLobby(mode string) {
+	queueMutex.RLock()
+	if !inQueue {
+		queueMutex.RUnlock()
+		return
+	}
+
+	var validTickets []MatchmakingTicket
+	for _, t := range activeTickets {
+		if t.Mode == mode {
+			validTickets = append(validTickets, t)
+		}
+	}
+	queueMutex.RUnlock()
+
+	requiredPlayers := 10
+	if mode == "1V1 HUBS" {
+		requiredPlayers = 2
+	}
+	if mode == "DEATHMATCH" {
+		requiredPlayers = 16
+	}
+	if mode == "TOURNAMENTS" {
+		requiredPlayers = 12
+	}
+	if len(validTickets) < requiredPlayers {
+		return
+	}
+
+	sort.Slice(validTickets, func(i, j int) bool {
+		return validTickets[i].AverageElo < validTickets[j].AverageElo
+	})
+
+	var selectedTickets []MatchmakingTicket
+	var currentPlayers int
+	var minElo, maxElo float64
+	const MaxEloSpread = 250.0
+
+	for i := 0; i < len(validTickets); i++ {
+		selectedTickets = []MatchmakingTicket{}
+		currentPlayers = 0
+
+		for j := i; j < len(validTickets); j++ {
+			if currentPlayers+len(validTickets[j].PartyMembers) <= requiredPlayers {
+				if len(selectedTickets) == 0 {
+					minElo = validTickets[j].AverageElo
+				}
+				maxElo = validTickets[j].AverageElo
+
+				if maxElo-minElo > MaxEloSpread {
+					break
+				}
+
+				selectedTickets = append(selectedTickets, validTickets[j])
+				currentPlayers += len(validTickets[j].PartyMembers)
+
+				if currentPlayers == requiredPlayers {
+					go ProposeLobby(selectedTickets, mode)
+					return
+				}
+			}
+		}
+	}
+}
+
+func ProposeLobby(tickets []MatchmakingTicket, mode string) {
+	var allPlayers []string
+	var totalElo float64
+
+	for _, t := range tickets {
+		allPlayers = append(allPlayers, t.PartyMembers...)
+		totalElo += (t.AverageElo * float64(len(t.PartyMembers)))
+	}
+
+	sort.Strings(allPlayers)
+	hostID := allPlayers[0]
+	proposalHash := sha256.Sum256([]byte(strings.Join(allPlayers, "")))
+
+	proposal := LobbyProposal{
+		ProposalID: fmt.Sprintf("prop_%x", proposalHash),
+		HostID:     hostID,
+		Mode:       mode,
+		Players:    allPlayers,
+		AverageElo: totalElo / float64(len(allPlayers)),
+		Timestamp:  time.Now().Unix(),
+	}
+
+	data, _ := json.Marshal(proposal)
+	if proposalTopic != nil {
+		proposalTopic.Publish(ctx, data)
+	}
+
+	HandleLobbyProposal(proposal)
+}
+
+func HandleLobbyProposal(proposal LobbyProposal) {
+	queueMutex.RLock()
+	if !inQueue {
+		queueMutex.RUnlock()
+		return
+	}
+	queueMutex.RUnlock()
+
+	amIIncluded := false
+	for _, p := range proposal.Players {
+		if p == h.ID().String() {
+			amIIncluded = true
+			break
+		}
+	}
+	if !amIIncluded {
+		return
+	}
+
+	proposalMutex.Lock()
+	defer proposalMutex.Unlock()
+	if bestProposal.ProposalID == "" || proposal.ProposalID < bestProposal.ProposalID {
+		bestProposal = proposal
+
+		if proposalTimer != nil {
+			proposalTimer.Stop()
+		}
+
+		proposalTimer = time.AfterFunc(3*time.Second, func() {
+			LockInLobby()
+		})
+	}
+}
+
+//export RegisterMatchCallback
+func RegisterMatchCallback(fn C.MatchFoundCallbackFn) {
+	C.SetMatchFoundCallback(fn)
+}
+
+//export LeaveMatchmaking
+func LeaveMatchmaking() {
+	queueMutex.Lock()
+	defer queueMutex.Unlock()
+
+	if !inQueue {
+		return
+	}
+
+	inQueue = false
+	if myCurrentTicket != "" {
+		delete(activeTickets, myCurrentTicket)
+		myCurrentTicket = ""
+	}
+
+	fmt.Println("[Matchmaking] Left the queue and wiped local ticket.")
+}
+
+func LockInLobby() {
+	proposalMutex.Lock()
+	finalProposal := bestProposal
+	bestProposal = LobbyProposal{}
+	proposalMutex.Unlock()
+
+	if finalProposal.ProposalID == "" {
+		return
+	}
+
+	LeaveMatchmaking()
+
+	fmt.Printf("[Matchmaking] LOBBY LOCKED! Host: %s, Avg Elo: %.0f\n", finalProposal.HostID, finalProposal.AverageElo)
+
+	cMatchID := C.CString(finalProposal.ProposalID)
+	cHostID := C.CString(finalProposal.HostID)
+	rosterStr := strings.Join(finalProposal.Players, ",")
+	cRoster := C.CString(rosterStr)
+	C.CallMatchFound(cMatchID, cHostID, cRoster)
+	C.free(unsafe.Pointer(cMatchID))
+	C.free(unsafe.Pointer(cHostID))
+	C.free(unsafe.Pointer(cRoster))
 }
 
 //export RegisterMySteamID
@@ -2341,6 +2605,55 @@ func ConnectToPeer(peerID *C.char) {
 	} else {
 		fmt.Printf("[P2P] Failed to connect to peer: %v\n", err)
 	}
+}
+
+//export EnterMatchmaking
+func EnterMatchmaking(mode *C.char) *C.char {
+	if pubSub == nil || queueTopic == nil {
+		return C.CString("Error: PubSub Not Ready")
+	}
+
+	modeStr := C.GoString(mode)
+
+	// For now, we assume a solo queue.
+	// (To implement parties later, you'd iterate through a local Dart party list here)
+	party := []string{h.ID().String()}
+
+	EdenChain.Mutex.RLock()
+	profile := EdenChain.GetOrInitProfile(h.ID().String())
+	avgElo := profile.Rating
+	EdenChain.Mutex.RUnlock()
+
+	ticket := MatchmakingTicket{
+		TicketID:     fmt.Sprintf("tk_%d_%s", time.Now().UnixNano(), h.ID().String()[:6]),
+		LeaderID:     h.ID().String(),
+		PartyMembers: party,
+		AverageElo:   avgElo,
+		Mode:         modeStr,
+		Timestamp:    time.Now().Unix(),
+	}
+
+	data, err := json.Marshal(ticket)
+	if err != nil {
+		return C.CString("Error: Failed to serialize ticket")
+	}
+
+	// Broadcast the ticket to the global queue
+	queueTopic.Publish(ctx, data)
+
+	// Update local state
+	queueMutex.Lock()
+	inQueue = true
+	myCurrentTicket = ticket.TicketID
+	activeTickets[ticket.TicketID] = ticket
+	queueMutex.Unlock()
+
+	fmt.Printf("[Matchmaking] Entered %s queue at %.0f Elo. Ticket: %s\n", modeStr, avgElo, ticket.TicketID)
+
+	// Trigger a check immediately in case the queue is already full
+	go TryFormLobby(modeStr)
+
+	return C.CString("Success: In Queue")
 }
 
 //export IsPeerAlive
