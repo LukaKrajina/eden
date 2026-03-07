@@ -742,9 +742,7 @@ func FetchFriendList() *C.char {
 
 //export GetNetworkMatches
 func GetNetworkMatches() *C.char {
-	matchesMutex.RLock()
-	defer matchesMutex.RUnlock()
-
+	matchesMutex.Lock()
 	var active []MatchAnnouncement
 	now := time.Now().Unix()
 
@@ -755,6 +753,37 @@ func GetNetworkMatches() *C.char {
 			delete(networkMatches, id)
 		}
 	}
+
+	matchesMutex.Unlock()
+
+	EdenChain.Mutex.RLock()
+	for mID, session := range EdenChain.MatchSessions {
+		found := false
+		for _, existing := range active {
+			if existing.MatchID == mID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			var total, a, b float64
+			if pool, ok := EdenChain.ActivePools[mID]; ok {
+				total = pool.TotalPool
+				a = pool.TeamAPool
+				b = pool.TeamBPool
+			}
+			active = append(active, MatchAnnouncement{
+				MatchID:   mID,
+				HostID:    session.HostID,
+				Phase:     "lobby",
+				Timestamp: session.StartTime,
+				TotalPool: total,
+				TeamAPool: a,
+				TeamBPool: b,
+			})
+		}
+	}
+	EdenChain.Mutex.RUnlock()
 
 	data, _ := json.Marshal(active)
 	return C.CString(string(data))
@@ -2248,6 +2277,17 @@ func AutoConnectToPeers(targetMode *C.char, targetMap *C.char) *C.char {
 				}
 			}
 			matchesMutex.RUnlock()
+
+			if !isHost {
+				EdenChain.Mutex.RLock()
+				for _, session := range EdenChain.MatchSessions {
+					if session.HostID == p.ID.String() {
+						isHost = true
+						break
+					}
+				}
+				EdenChain.Mutex.RUnlock()
+			}
 
 			if !isHost {
 				continue
