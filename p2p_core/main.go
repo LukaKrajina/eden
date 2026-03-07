@@ -1427,6 +1427,11 @@ func ListSteamItem(assetID *C.char, price C.double, durationSeconds C.int) *C.ch
 		Nonce:     GetNextNonce(h.ID().String()),
 	}
 
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		fmt.Printf("[Error] Failed to sign listing tx: %v\n", err)
+		return C.CString("Error: Signing Failed")
+	}
+
 	newBlock := Block{
 		Index:        EdenChain.LastBlock.Index + 1,
 		Timestamp:    time.Now().Unix(),
@@ -1504,6 +1509,11 @@ func TriggerExpirationCleanup() *C.char {
 			Nonce:     GetNextNonce(h.ID().String()),
 		}
 
+		if err := SignTransaction(myPrivKey, &tx); err != nil {
+			fmt.Printf("[Error] Failed to sign listing tx: %v\n", err)
+			return C.CString("Error: Signing Failed")
+		}
+
 		newBlock := Block{
 			Index:        EdenChain.LastBlock.Index + 1,
 			Timestamp:    time.Now().Unix(),
@@ -1542,6 +1552,11 @@ func PlaceBet(matchID *C.char, team *C.char, amount C.double) *C.char {
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
 		Nonce:     GetNextNonce(h.ID().String()),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		fmt.Printf("[Error] Failed to sign listing tx: %v\n", err)
+		return C.CString("Error: Signing Failed")
 	}
 
 	newBlock := Block{
@@ -1663,6 +1678,11 @@ func CreateEscrow(sellerID *C.char, assetID *C.char, price C.double) *C.char {
 		Timestamp: time.Now().Unix(),
 		PublicKey: pubKeyBytes,
 		Nonce:     GetNextNonce(h.ID().String()),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		fmt.Printf("[Error] Failed to sign listing tx: %v\n", err)
+		return C.CString("Error: Signing Failed")
 	}
 
 	newBlock := Block{
