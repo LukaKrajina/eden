@@ -122,6 +122,12 @@ typedef EnterMatchmakingDart = Pointer<Utf8> Function(Pointer<Utf8> mode);
 typedef LeaveMatchmakingC = Void Function();
 typedef LeaveMatchmakingDart = void Function();
 
+typedef BroadcastMapVetoC = Void Function(Pointer<Utf8> matchID, Pointer<Utf8> mapName);
+typedef BroadcastMapVetoDart = void Function(Pointer<Utf8> matchID, Pointer<Utf8> mapName);
+
+typedef GetMatchVetoesC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef GetMatchVetoesDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -173,6 +179,8 @@ class P2PService {
   late RegisterMatchCallbackDart _registerMatchCallback;
   late EnterMatchmakingDart _enterMatchmaking;
   late LeaveMatchmakingDart _leaveMatchmaking;
+  late BroadcastMapVetoDart _broadcastMapVeto;
+  late GetMatchVetoesDart _getMatchVetoes;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
@@ -230,6 +238,8 @@ class P2PService {
     _enterMatchmaking = _lib.lookupFunction<EnterMatchmakingC, EnterMatchmakingDart>('EnterMatchmaking');
     _leaveMatchmaking = _lib.lookupFunction<LeaveMatchmakingC, LeaveMatchmakingDart>('LeaveMatchmaking');
     _registerMatchCallback(Pointer.fromFunction<MatchFoundCallbackC>(_matchFoundHandler));
+    _broadcastMapVeto = _lib.lookupFunction<BroadcastMapVetoC, BroadcastMapVetoDart>('BroadcastMapVeto');
+    _getMatchVetoes = _lib.lookupFunction<GetMatchVetoesC, GetMatchVetoesDart>('GetMatchVetoes');
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -619,6 +629,29 @@ class P2PService {
       return raw.cast<String>();
     } catch (e) {
       print("[P2P] Failed to parse roster JSON: $e");
+      return [];
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  void broadcastMapVeto(String matchID, String mapName) {
+    if (!_isInitialized) return;
+    final mPtr = matchID.toNativeUtf8();
+    final nPtr = mapName.toNativeUtf8();
+    _broadcastMapVeto(mPtr, nPtr);
+    calloc.free(mPtr);
+    calloc.free(nPtr);
+  }
+
+  Future<List<String>> getMatchVetoes(String matchID) async {
+    if (!_isInitialized) return [];
+    final ptr = matchID.toNativeUtf8();
+    try {
+      final jsonStr = _consumeNativeString(_getMatchVetoes(ptr));
+      final List<dynamic> raw = jsonDecode(jsonStr);
+      return raw.cast<String>();
+    } catch (e) {
       return [];
     } finally {
       calloc.free(ptr);

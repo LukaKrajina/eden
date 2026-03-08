@@ -74,6 +74,8 @@ typedef void (*AdvertiseHostLobbyFunc)(char* mode, char* mapName);
 typedef char* (*EnterMatchmakingFunc)(char* mode);
 typedef void (*LeaveMatchmakingFunc)();
 typedef void (*RegisterMatchCallbackFunc)(void* callback);
+typedef void (*BroadcastMapVetoFunc)(char* matchID, char* mapName);
+typedef char* (*GetMatchVetoesFunc)(char* matchID);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -115,6 +117,8 @@ AdvertiseHostLobbyFunc ptrAdvertiseHostLobby = nullptr;
 static EnterMatchmakingFunc ptrEnterMatchmaking = nullptr;
 static LeaveMatchmakingFunc ptrLeaveMatchmaking = nullptr;
 static RegisterMatchCallbackFunc ptrRegisterMatchCallback = nullptr;
+static BroadcastMapVetoFunc ptrBroadcastMapVeto = nullptr;
+static GetMatchVetoesFunc ptrGetMatchVetoes = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -233,6 +237,8 @@ bool LoadGoDLL() {
     ptrEnterMatchmaking = (EnterMatchmakingFunc)GetProcAddress(hGo, "EnterMatchmaking");
     ptrLeaveMatchmaking = (LeaveMatchmakingFunc)GetProcAddress(hGo, "LeaveMatchmaking");
     ptrRegisterMatchCallback = (RegisterMatchCallbackFunc)GetProcAddress(hGo, "RegisterMatchCallback");
+    ptrBroadcastMapVeto = (BroadcastMapVetoFunc)GetProcAddress(hGo, "BroadcastMapVeto");
+    ptrGetMatchVetoes = (GetMatchVetoesFunc)GetProcAddress(hGo, "GetMatchVetoes");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -487,6 +493,15 @@ extern "C" __declspec(dllexport) const char* UpdateProfile(char* username, char*
 extern "C" __declspec(dllexport) const char* GetPeerProfile(char* peerID) {
     if (ptrGetPeerProfile) return ptrGetPeerProfile(peerID);
     return "{}";
+}
+
+extern "C" __declspec(dllexport) void BroadcastMapVeto(char* matchID, char* mapName) {
+    if (ptrBroadcastMapVeto) ptrBroadcastMapVeto(matchID, mapName);
+}
+
+extern "C" __declspec(dllexport) const char* GetMatchVetoes(char* matchID) {
+    if (ptrGetMatchVetoes) return ptrGetMatchVetoes(matchID);
+    return "[]";
 }
 
 extern "C" __declspec(dllexport) void BroadcastMatchReady(char* matchID) {

@@ -2098,6 +2098,35 @@ func setupPubSub() {
 		}
 	}()
 
+	vetoTopic, err = pubSub.Join("eden-match-vetoes")
+	if err == nil {
+		vetoSub, _ := vetoTopic.Subscribe()
+		go func() {
+			for {
+				msg, err := vetoSub.Next(ctx)
+				if err != nil {
+					return
+				}
+
+				var v VetoBroadcast
+				if err := json.Unmarshal(msg.Data, &v); err == nil {
+					vetoMutex.Lock()
+					alreadyBanned := false
+					for _, m := range matchVetoes[v.MatchID] {
+						if m == v.MapName {
+							alreadyBanned = true
+							break
+						}
+					}
+					if !alreadyBanned {
+						matchVetoes[v.MatchID] = append(matchVetoes[v.MatchID], v.MapName)
+					}
+					vetoMutex.Unlock()
+				}
+			}
+		}()
+	}
+
 	readyFeedTopic, _ = pubSub.Join("eden-match-ready")
 	readySub, _ := readyFeedTopic.Subscribe()
 	go func() {
@@ -2659,6 +2688,39 @@ func EnterMatchmaking(mode *C.char) *C.char {
 	go TryFormLobby(modeStr)
 
 	return C.CString("Success: In Queue")
+}
+
+//export BroadcastMapVeto
+func BroadcastMapVeto(matchID *C.char, mapName *C.char) {
+	mID := C.GoString(matchID)
+	mName := C.GoString(mapName)
+
+	v := VetoBroadcast{MatchID: mID, PeerID: h.ID().String(), MapName: mName}
+	if data, err := json.Marshal(v); err == nil {
+		if vetoTopic != nil {
+			vetoTopic.Publish(ctx, data)
+		}
+
+		vetoMutex.Lock()
+		matchVetoes[mID] = append(matchVetoes[mID], mName)
+		vetoMutex.Unlock()
+	}
+}
+
+//export GetMatchVetoes
+func GetMatchVetoes(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+
+	vetoMutex.RLock()
+	defer vetoMutex.RUnlock()
+
+	bans, exists := matchVetoes[mID]
+	if !exists {
+		return C.CString("[]")
+	}
+
+	data, _ := json.Marshal(bans)
+	return C.CString(string(data))
 }
 
 //export IsPeerAlive
