@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert'; // Added for JSON
 import 'package:eden/misc/mod_config_mapper.dart';
 import 'package:eden/widget/match_ready_room.dart';
+import 'package:eden/widget/vote_room.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -835,7 +836,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         await Future.delayed(const Duration(seconds: 2));
       }
 
-          showDialog(
+      if (!mounted) return;
+
+      showDialog(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => MatchReadyRoom(
@@ -846,13 +849,39 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             myPeerID: _myPeerID,
             p2pService: widget.p2pService,
             onAllReady: () async {
-              setState(() => _status = "JOINING MATCH...");
-              await widget.matchOrchestrator.joinMatch(
-                activePath, 
-                g_selectedGame, 
-                foundMatchID!, 
-                targetPeerID, 
-                _nameController.text
+              Navigator.pop(ctx); 
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (vetoCtx) => VetoRoom(
+                  matchID: foundMatchID!,
+                  roster: actualRoster,
+                  myPeerID: _myPeerID,
+                  p2pService: widget.p2pService,
+                  onVetoComplete: (String finalMap) async {
+                    setState(() => _status = "LAUNCHING $finalMap...");
+                    if (hostID == _myPeerID) {
+                      GameMode gMode = GameMode.matchmaking; 
+
+                      if (_selectedModeTitle == "TOURNAMENTS") {
+                        gMode = GameMode.tournaments;
+                      } else if (_selectedModeTitle == "DEATHMATCH") {
+                        gMode = GameMode.deathmatch;
+                      } else if (_selectedModeTitle == "1V1 HUBS") {
+                        gMode = GameMode.one_one;
+                      }
+                      
+                      await widget.matchOrchestrator.hostMatch(
+                        activePath, g_selectedGame, "0.0.0.0", gMode, 
+                        _selectedModeTitle, finalMap, actualRoster, _recordDemo, 27015
+                      );
+                    } else {
+                      await widget.matchOrchestrator.joinMatch(
+                        activePath, g_selectedGame, foundMatchID!, hostID, _nameController.text
+                      );
+                    }
+                  },
+                ),
               );
             },
             onTimeout: () {
