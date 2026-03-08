@@ -95,26 +95,29 @@ var (
 	h                 host.Host
 	ctx               context.Context
 	kademliaDHT       *dht.IpfsDHT
-	streamLock        sync.Mutex
 	pubSub            *pubsub.PubSub
-	blockTopic        *pubsub.Topic
 	currentMatchID    string
 	lastBroadcastHash string
 	lastBroadcastTime int64
+	blockTopic        *pubsub.Topic
 	bettingTopic      *pubsub.Topic
 	readyFeedTopic    *pubsub.Topic
 	matchFeedTopic    *pubsub.Topic
-	matchReadyStates  = make(map[string]map[string]bool)
-	networkMatches    = make(map[string]MatchAnnouncement)
 	queueTopic        *pubsub.Topic
 	proposalTopic     *pubsub.Topic
-	activeTickets     = make(map[string]MatchmakingTicket)
-	queueMutex        sync.RWMutex
+	vetoTopic         *pubsub.Topic
 	inQueue           bool
 	myCurrentTicket   string
 	bestProposal      LobbyProposal
 	proposalTimer     *time.Timer
+	matchReadyStates  = make(map[string]map[string]bool)
+	networkMatches    = make(map[string]MatchAnnouncement)
+	activeTickets     = make(map[string]MatchmakingTicket)
+	matchVetoes       = make(map[string][]string)
+	streamLock        sync.Mutex
+	queueMutex        sync.RWMutex
 	proposalMutex     sync.Mutex
+	vetoMutex         sync.RWMutex
 	readyMutex        sync.RWMutex
 	matchesMutex      sync.RWMutex
 
@@ -193,6 +196,12 @@ type LobbyProposal struct {
 	Players    []string `json:"players"`
 	AverageElo float64  `json:"average_elo"`
 	Timestamp  int64    `json:"timestamp"`
+}
+
+type VetoBroadcast struct {
+	MatchID string `json:"match_id"`
+	PeerID  string `json:"peer_id"`
+	MapName string `json:"map_name"`
 }
 
 type MatchReadyBroadcast struct {

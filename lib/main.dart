@@ -764,6 +764,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       setState(() {
         _isSearching = false;
         _status = _lgpkg.get("MatchCancelled");
+        widget.p2pService.leaveMatchmaking();
       });
       _runner.stopClient(g_selectedGame);
       _runner.stopServer();
@@ -789,6 +790,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _status = _lgpkg.get("SearchingMsg");
     });
 
+    widget.p2pService.enterMatchmaking(_selectedModeTitle);
+
     String targetPeerID = await widget.p2pService.findMatch(_selectedModeTitle, _selectedMap);
     
     if (!mounted || !_isSearching) return;
@@ -811,6 +814,10 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         return;
       }
 
+      widget.p2pService.onMatchFound = (matchID, hostID, roster) async {
+      
+      if (!mounted) return;
+
       setState(() {
         _isSearching = false;
         _status = _lgpkg.get("MatchFound");
@@ -820,15 +827,14 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       int rosterAttempts = 0;
       
       while (rosterAttempts < 15) {
-        actualRoster = await widget.p2pService.getMatchRoster(foundMatchID);
+        actualRoster = await widget.p2pService.getMatchRoster(foundMatchID!);
         if (actualRoster.isNotEmpty) {
           break;
         }
         rosterAttempts++;
         await Future.delayed(const Duration(seconds: 2));
       }
-      
-      if (mounted) {
+
           showDialog(
           context: context,
           barrierDismissible: false,
@@ -857,7 +863,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             },
           )
         );
-      }
+      };
     } else {
       setState(() {
         _isSearching = false;
