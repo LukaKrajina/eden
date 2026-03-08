@@ -71,6 +71,9 @@ typedef char* (*GetMatchReadyStatesFunc)(char* matchID);
 typedef char* (*GetMatchRosterFunc)(char* matchID);
 typedef char* (*AutoConnectToPeersFunc)(char* mode, char* mapName);
 typedef void (*AdvertiseHostLobbyFunc)(char* mode, char* mapName);
+typedef char* (*EnterMatchmakingFunc)(char* mode);
+typedef void (*LeaveMatchmakingFunc)();
+typedef void (*RegisterMatchCallbackFunc)(void* callback);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -109,6 +112,9 @@ static BroadcastMatchReadyFunc ptrBroadcastMatchReady = nullptr;
 static GetMatchReadyStatesFunc ptrGetMatchReadyStates = nullptr;
 static GetMatchRosterFunc ptrGetMatchRoster = nullptr;
 AdvertiseHostLobbyFunc ptrAdvertiseHostLobby = nullptr;
+static EnterMatchmakingFunc ptrEnterMatchmaking = nullptr;
+static LeaveMatchmakingFunc ptrLeaveMatchmaking = nullptr;
+static RegisterMatchCallbackFunc ptrRegisterMatchCallback = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -224,6 +230,9 @@ bool LoadGoDLL() {
     ptrGetMatchReadyStates = (GetMatchReadyStatesFunc)GetProcAddress(hGo, "GetMatchReadyStates");
     ptrGetMatchRoster = (GetMatchRosterFunc)GetProcAddress(hGo, "GetMatchRoster");
     ptrAdvertiseHostLobby = (AdvertiseHostLobbyFunc)GetProcAddress(hGo, "AdvertiseHostLobby");
+    ptrEnterMatchmaking = (EnterMatchmakingFunc)GetProcAddress(hGo, "EnterMatchmaking");
+    ptrLeaveMatchmaking = (LeaveMatchmakingFunc)GetProcAddress(hGo, "LeaveMatchmaking");
+    ptrRegisterMatchCallback = (RegisterMatchCallbackFunc)GetProcAddress(hGo, "RegisterMatchCallback");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -496,6 +505,21 @@ extern "C" __declspec(dllexport) const char* GetMatchReadyStates(char* matchID) 
 extern "C" __declspec(dllexport) const char* GetMatchRoster(char* matchID) {
     if (ptrGetMatchRoster) return ptrGetMatchRoster(matchID);
     return "[]";
+}
+
+extern "C" __declspec(dllexport) const char* EnterMatchmaking(char* mode) {
+    if (ptrEnterMatchmaking) return ptrEnterMatchmaking(mode);
+    return "Error: DLL Func Missing";
+}
+
+extern "C" __declspec(dllexport) void LeaveMatchmaking() {
+    if (ptrLeaveMatchmaking) ptrLeaveMatchmaking();
+}
+
+extern "C" __declspec(dllexport) void RegisterMatchCallback(void* callbackFn) {
+    if (ptrRegisterMatchCallback) {
+        ptrRegisterMatchCallback(callbackFn);
+    }
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {

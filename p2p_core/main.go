@@ -2638,10 +2638,7 @@ func EnterMatchmaking(mode *C.char) *C.char {
 		return C.CString("Error: Failed to serialize ticket")
 	}
 
-	// Broadcast the ticket to the global queue
 	queueTopic.Publish(ctx, data)
-
-	// Update local state
 	queueMutex.Lock()
 	inQueue = true
 	myCurrentTicket = ticket.TicketID
@@ -2650,7 +2647,6 @@ func EnterMatchmaking(mode *C.char) *C.char {
 
 	fmt.Printf("[Matchmaking] Entered %s queue at %.0f Elo. Ticket: %s\n", modeStr, avgElo, ticket.TicketID)
 
-	// Trigger a check immediately in case the queue is already full
 	go TryFormLobby(modeStr)
 
 	return C.CString("Success: In Queue")

@@ -111,6 +111,17 @@ typedef RespondToRequestDart = Pointer<Utf8> Function(Pointer<Utf8> peerID, int 
 typedef CheckConnectionHealthC = Bool Function();
 typedef CheckConnectionHealthDart = bool Function();
 
+typedef MatchFoundCallbackC = Void Function(Pointer<Utf8> matchID, Pointer<Utf8> hostID, Pointer<Utf8> rosterList);
+
+typedef RegisterMatchCallbackC = Void Function(Pointer<NativeFunction<MatchFoundCallbackC>> callback);
+typedef RegisterMatchCallbackDart = void Function(Pointer<NativeFunction<MatchFoundCallbackC>> callback);
+
+typedef EnterMatchmakingC = Pointer<Utf8> Function(Pointer<Utf8> mode);
+typedef EnterMatchmakingDart = Pointer<Utf8> Function(Pointer<Utf8> mode);
+
+typedef LeaveMatchmakingC = Void Function();
+typedef LeaveMatchmakingDart = void Function();
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -159,6 +170,11 @@ class P2PService {
   late AdvertiseHostLobbyDart _advertiseHostLobby;
   late FreeStringDart _freeString;
   late CheckConnectionHealthDart _checkConnectionHealth;
+  late RegisterMatchCallbackDart _registerMatchCallback;
+  late EnterMatchmakingDart _enterMatchmaking;
+  late LeaveMatchmakingDart _leaveMatchmaking;
+
+  Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -210,6 +226,22 @@ class P2PService {
     _getMatchRoster = _lib.lookupFunction<GetMatchRosterC, GetMatchRosterDart>('GetMatchRoster');
     _freeString = _lib.lookupFunction<FreeStringC, FreeStringDart>('FreeString');
     _checkConnectionHealth = _lib.lookupFunction<CheckConnectionHealthC, CheckConnectionHealthDart>('CheckConnectionHealth');
+    _registerMatchCallback = _lib.lookupFunction<RegisterMatchCallbackC, RegisterMatchCallbackDart>('RegisterMatchCallback');
+    _enterMatchmaking = _lib.lookupFunction<EnterMatchmakingC, EnterMatchmakingDart>('EnterMatchmaking');
+    _leaveMatchmaking = _lib.lookupFunction<LeaveMatchmakingC, LeaveMatchmakingDart>('LeaveMatchmaking');
+    _registerMatchCallback(Pointer.fromFunction<MatchFoundCallbackC>(_matchFoundHandler));
+  }
+
+  static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
+    final matchID = matchIDPtr.toDartString();
+    final hostID = hostIDPtr.toDartString();
+    final rosterListStr = rosterListPtr.toDartString();
+    
+    final roster = rosterListStr.split(',');
+
+    if (_instance.onMatchFound != null) {
+      _instance.onMatchFound!(matchID, hostID, roster);
+    }
   }
 
   String _consumeNativeString(Pointer<Utf8> ptr) {
@@ -251,6 +283,20 @@ class P2PService {
     final ptr = peerID.toNativeUtf8();
     _connectToPeer(ptr);
     calloc.free(ptr);
+  }
+
+  String enterMatchmaking(String mode) {
+    if (!_isInitialized) return "Offline";
+    final ptr = mode.toNativeUtf8();
+    try {
+      return _consumeNativeString(_enterMatchmaking(ptr));
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  void leaveMatchmaking() {
+    if (_isInitialized) _leaveMatchmaking();
   }
 
   Future<String> getMyID() async {
