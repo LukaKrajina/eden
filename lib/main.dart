@@ -219,6 +219,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   late TextEditingController _nameController;
   Timer? _refreshTimer;
   Timer? _scoreTimer;
+  Timer? _pollNetworkTimer;
   Timer? _steamIdTimer;
   Timer? _pollMatchesTimer;
   String _myPeerID = "";
@@ -232,6 +233,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   bool _isEngineRunning = false;
   bool _isCompanionVisible = false;
   int _currentView = 0;
+  int _banExpiryTimestamp = 0;
   bool _hasMinedThisMatch = false;
   int _selectedShopTab = 0;
   String _selectedModeTitle = "MATCHMAKING"; 
@@ -270,9 +272,11 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _steamIDKeyController.text = g_steamIDKey;
     _steamApiKeyController.text = g_steamApiKey;
 
+    _pollNetworkState();
     _scoreAcquirer();
     _steamIdAcquirer();
 
+    _pollMatchesTimer = Timer.periodic(const Duration(seconds: 1),(_) => _pollNetworkState());
     _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
     _steamIdTimer = Timer.periodic(const Duration(seconds: 2), (_) => _steamIdAcquirer());
     
@@ -305,6 +309,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
   @override
   void dispose() {
+    _pollNetworkTimer?.cancel();
     _scoreTimer?.cancel();
     _steamIdTimer?.cancel();
     _pollMatchesTimer?.cancel();
@@ -319,6 +324,15 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _friendCodeController.dispose();
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pollNetworkState() async {
+    if (widget.p2pService.isConnected()) {
+      int expiry = widget.p2pService.getMyBanExpiry();
+      if (mounted && expiry != _banExpiryTimestamp) {
+        setState(() => _banExpiryTimestamp = expiry);
+      }
+    }
   }
 
   Future<void> _scoreAcquirer() async {
@@ -870,7 +884,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                       } else if (_selectedModeTitle == "1V1 HUBS") {
                         gMode = GameMode.one_one;
                       }
-                      
+
                       await widget.matchOrchestrator.hostMatch(
                         activePath, g_selectedGame, "0.0.0.0", gMode, 
                         _selectedModeTitle, finalMap, actualRoster, _recordDemo, 27015
@@ -1483,15 +1497,38 @@ Widget _buildFriendList() {
   }
 
   Widget _buildRightPanel() {
+    int nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    bool isBanned = _banExpiryTimestamp > nowSeconds;
+    String btnText = _isSearching ? _lgpkg.get("CancelMatching") : _lgpkg.get("Play");
+    Color btnColor = _isSearching ? Colors.red[900]! : kEdenOrange;
+
+    if (isBanned) {
+      int remaining = _banExpiryTimestamp - nowSeconds;
+      int m = remaining ~/ 60;
+      int s = remaining % 60;
+      btnText = "BANNED (${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')})";
+      btnColor = Colors.grey[800]!;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
-          onTap: _toggleMatching,
+          onTap: isBanned ? null : _toggleMatching,
           child: Container(
             height: 60, alignment: Alignment.center,
-            decoration: BoxDecoration(color: _isSearching ? Colors.red[900] : kEdenOrange, borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: (_isSearching ? Colors.red : kEdenOrange).withOpacity(0.4), blurRadius: 15, spreadRadius: 1)]),
-            child: Text(_isSearching ? _lgpkg.get("CancelMatching") : _lgpkg.get("Play"), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald")),
+            decoration: BoxDecoration(
+              color: btnColor, 
+              borderRadius: BorderRadius.circular(4), 
+              boxShadow: [BoxShadow(color: btnColor.withValues(alpha: 0.4), blurRadius: 15, spreadRadius: 1)]
+            ),
+            child: Text(
+              btnText, 
+              style: TextStyle(
+                color: isBanned ? Colors.grey[500] : Colors.white, 
+                fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontFamily: "Oswald"
+              )
+            ),
           ),
         ),
         const SizedBox(height: 12),

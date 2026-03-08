@@ -2306,19 +2306,36 @@ func TryFormLobby(mode string) {
 
 func ElectHost(players []string) string {
 	bestHost := players[0]
-	highestScore := -1.0
+	bestScore := -99999.0
 
 	EdenChain.Mutex.RLock()
 	defer EdenChain.Mutex.RUnlock()
 
 	for _, p := range players {
 		prof := EdenChain.GetOrInitProfile(p)
-		score := float64(prof.Matches)*10.0 + prof.Rating
-		if score > highestScore {
-			highestScore = score
+
+		reliabilityScore := float64(prof.Matches)*10.0 + prof.Rating
+
+		latencyPenalty := 1000.0
+		pid, err := peer.Decode(p)
+		if err == nil {
+			latency := h.Peerstore().LatencyEWMA(pid)
+			if latency > 0 {
+				latencyPenalty = float64(latency.Milliseconds())
+			} else if p == h.ID().String() {
+				latencyPenalty = 0.0
+			}
+		}
+
+		finalScore := reliabilityScore - (latencyPenalty * 5.0)
+
+		if finalScore > bestScore {
+			bestScore = finalScore
 			bestHost = p
 		}
 	}
+
+	fmt.Printf("[Matchmaking] Elected Host %s with score %.2f\n", bestHost, bestScore)
 	return bestHost
 }
 
@@ -2811,6 +2828,15 @@ func GetMatchVetoes(matchID *C.char) *C.char {
 
 	data, _ := json.Marshal(bans)
 	return C.CString(string(data))
+}
+
+//export GetMyBanExpiry
+func GetMyBanExpiry() *C.char {
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+
+	expiry := EdenChain.QueueBans[h.ID().String()]
+	return C.CString(fmt.Sprintf("%d", expiry))
 }
 
 //export IsPeerAlive

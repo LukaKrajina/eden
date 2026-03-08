@@ -131,6 +131,9 @@ typedef GetMatchVetoesDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 typedef SubmitDodgePenaltyC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> dodgerPeerID);
 typedef SubmitDodgePenaltyDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> dodgerPeerID);
 
+typedef GetMyBanExpiryC = Pointer<Utf8> Function();
+typedef GetMyBanExpiryDart = Pointer<Utf8> Function();
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -185,6 +188,7 @@ class P2PService {
   late BroadcastMapVetoDart _broadcastMapVeto;
   late GetMatchVetoesDart _getMatchVetoes;
   late SubmitDodgePenaltyDart _submitDodgePenalty;
+  late GetMyBanExpiryDart _getMyBanExpiry;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
@@ -245,6 +249,7 @@ class P2PService {
     _broadcastMapVeto = _lib.lookupFunction<BroadcastMapVetoC, BroadcastMapVetoDart>('BroadcastMapVeto');
     _getMatchVetoes = _lib.lookupFunction<GetMatchVetoesC, GetMatchVetoesDart>('GetMatchVetoes');
     _submitDodgePenalty = _lib.lookupFunction<SubmitDodgePenaltyC, SubmitDodgePenaltyDart>('SubmitDodgePenalty');
+    _getMyBanExpiry = _lib.lookupFunction<GetMyBanExpiryC, GetMyBanExpiryDart>('GetMyBanExpiry');
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -674,6 +679,16 @@ class P2PService {
     } finally {
       calloc.free(mPtr);
       calloc.free(dPtr);
+    }
+  }
+
+  int getMyBanExpiry() {
+    if (!_isInitialized) return 0;
+    try {
+      String val = _consumeNativeString(_getMyBanExpiry());
+      return int.tryParse(val) ?? 0;
+    } catch (e) {
+      return 0;
     }
   }
 }

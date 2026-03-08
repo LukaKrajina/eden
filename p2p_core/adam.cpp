@@ -77,6 +77,7 @@ typedef void (*RegisterMatchCallbackFunc)(void* callback);
 typedef void (*BroadcastMapVetoFunc)(char* matchID, char* mapName);
 typedef char* (*GetMatchVetoesFunc)(char* matchID);
 typedef char* (*SubmitDodgePenaltyFunc)(char* matchID, char* dodgerPeerID);
+typedef char* (*GetMyBanExpiryFunc)();
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -121,6 +122,7 @@ static RegisterMatchCallbackFunc ptrRegisterMatchCallback = nullptr;
 static BroadcastMapVetoFunc ptrBroadcastMapVeto = nullptr;
 static GetMatchVetoesFunc ptrGetMatchVetoes = nullptr;
 SubmitDodgePenaltyFunc ptrSubmitDodgePenalty = nullptr;
+GetMyBanExpiryFunc ptrGetMyBanExpiry = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -242,6 +244,7 @@ bool LoadGoDLL() {
     ptrBroadcastMapVeto = (BroadcastMapVetoFunc)GetProcAddress(hGo, "BroadcastMapVeto");
     ptrGetMatchVetoes = (GetMatchVetoesFunc)GetProcAddress(hGo, "GetMatchVetoes");
     ptrSubmitDodgePenalty = (SubmitDodgePenaltyFunc)GetProcAddress(hGo, "SubmitDodgePenalty");
+    ptrGetMyBanExpiry = (GetMyBanExpiryFunc)GetProcAddress(hGo, "GetMyBanExpiry");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -543,6 +546,11 @@ extern "C" __declspec(dllexport) void RegisterMatchCallback(void* callbackFn) {
 extern "C" __declspec(dllexport) const char* SubmitDodgePenalty(char* matchID, char* dodgerPeerID) {
     if (ptrSubmitDodgePenalty) return ptrSubmitDodgePenalty(matchID, dodgerPeerID);
     return "Error: Function Not Loaded";
+}
+
+extern "C" __declspec(dllexport) const char* GetMyBanExpiry() {
+    if (ptrGetMyBanExpiry) return ptrGetMyBanExpiry();
+    return "0";
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {
