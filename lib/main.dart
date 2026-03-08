@@ -245,6 +245,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   String _selectedMap = "de_dust2";
   File? _avatarImage;
   List<dynamic> _friends = [];
+  List<String> _currentParty = [];
   List<dynamic> _realAuctions = [];
   List<dynamic> _liveMatches = [];
   final List<String> _maps = [
@@ -305,6 +306,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             }
         }
       });
+
+    _currentParty.add(_myPeerID);
   }
 
   @override
@@ -805,7 +808,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       _status = _lgpkg.get("SearchingMsg");
     });
 
-    widget.p2pService.enterMatchmaking(_selectedModeTitle);
+    widget.p2pService.enterMatchmaking(_selectedModeTitle,_currentParty);
 
     String targetPeerID = await widget.p2pService.findMatch(_selectedModeTitle, _selectedMap);
     
