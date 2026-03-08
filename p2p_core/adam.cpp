@@ -71,11 +71,12 @@ typedef char* (*GetMatchReadyStatesFunc)(char* matchID);
 typedef char* (*GetMatchRosterFunc)(char* matchID);
 typedef char* (*AutoConnectToPeersFunc)(char* mode, char* mapName);
 typedef void (*AdvertiseHostLobbyFunc)(char* mode, char* mapName);
-typedef char* (*EnterMatchmakingFunc)(char* mode);
+typedef char* (*EnterMatchmakingFunc)(char* mode, char* partyList);
 typedef void (*LeaveMatchmakingFunc)();
 typedef void (*RegisterMatchCallbackFunc)(void* callback);
 typedef void (*BroadcastMapVetoFunc)(char* matchID, char* mapName);
 typedef char* (*GetMatchVetoesFunc)(char* matchID);
+typedef char* (*SubmitDodgePenaltyFunc)(char* matchID, char* dodgerPeerID);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -119,6 +120,7 @@ static LeaveMatchmakingFunc ptrLeaveMatchmaking = nullptr;
 static RegisterMatchCallbackFunc ptrRegisterMatchCallback = nullptr;
 static BroadcastMapVetoFunc ptrBroadcastMapVeto = nullptr;
 static GetMatchVetoesFunc ptrGetMatchVetoes = nullptr;
+SubmitDodgePenaltyFunc ptrSubmitDodgePenalty = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -239,6 +241,7 @@ bool LoadGoDLL() {
     ptrRegisterMatchCallback = (RegisterMatchCallbackFunc)GetProcAddress(hGo, "RegisterMatchCallback");
     ptrBroadcastMapVeto = (BroadcastMapVetoFunc)GetProcAddress(hGo, "BroadcastMapVeto");
     ptrGetMatchVetoes = (GetMatchVetoesFunc)GetProcAddress(hGo, "GetMatchVetoes");
+    ptrSubmitDodgePenalty = (SubmitDodgePenaltyFunc)GetProcAddress(hGo, "SubmitDodgePenalty");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -522,8 +525,8 @@ extern "C" __declspec(dllexport) const char* GetMatchRoster(char* matchID) {
     return "[]";
 }
 
-extern "C" __declspec(dllexport) const char* EnterMatchmaking(char* mode) {
-    if (ptrEnterMatchmaking) return ptrEnterMatchmaking(mode);
+extern "C" __declspec(dllexport) const char* EnterMatchmaking(char* mode, char* partyList) {
+    if (ptrEnterMatchmaking) return ptrEnterMatchmaking(mode, partyList);
     return "Error: DLL Func Missing";
 }
 
@@ -535,6 +538,11 @@ extern "C" __declspec(dllexport) void RegisterMatchCallback(void* callbackFn) {
     if (ptrRegisterMatchCallback) {
         ptrRegisterMatchCallback(callbackFn);
     }
+}
+
+extern "C" __declspec(dllexport) const char* SubmitDodgePenalty(char* matchID, char* dodgerPeerID) {
+    if (ptrSubmitDodgePenalty) return ptrSubmitDodgePenalty(matchID, dodgerPeerID);
+    return "Error: Function Not Loaded";
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {

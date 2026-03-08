@@ -324,6 +324,7 @@ var state GSIState
 var roundsPlayed int = 0
 var activeSession *LiveMatchSession
 var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
+var queuePenalties = make(map[string]int64)
 
 //export UpdateMyProfile
 func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
@@ -2267,6 +2268,20 @@ func TryFormLobby(mode string) {
 		currentPlayers = 0
 
 		for j := i; j < len(validTickets); j++ {
+			EdenChain.Mutex.RLock()
+			isBanned := false
+			for _, p := range validTickets[j].PartyMembers {
+				if banExpiry, exists := EdenChain.QueueBans[p]; exists && banExpiry > time.Now().Unix() {
+					isBanned = true
+					break
+				}
+			}
+			EdenChain.Mutex.RUnlock()
+
+			if isBanned {
+				continue
+			}
+
 			if currentPlayers+len(validTickets[j].PartyMembers) <= requiredPlayers {
 				if len(selectedTickets) == 0 {
 					minElo = validTickets[j].AverageElo
@@ -2289,6 +2304,24 @@ func TryFormLobby(mode string) {
 	}
 }
 
+func ElectHost(players []string) string {
+	bestHost := players[0]
+	highestScore := -1.0
+
+	EdenChain.Mutex.RLock()
+	defer EdenChain.Mutex.RUnlock()
+
+	for _, p := range players {
+		prof := EdenChain.GetOrInitProfile(p)
+		score := float64(prof.Matches)*10.0 + prof.Rating
+		if score > highestScore {
+			highestScore = score
+			bestHost = p
+		}
+	}
+	return bestHost
+}
+
 func ProposeLobby(tickets []MatchmakingTicket, mode string) {
 	var allPlayers []string
 	var totalElo float64
@@ -2299,7 +2332,7 @@ func ProposeLobby(tickets []MatchmakingTicket, mode string) {
 	}
 
 	sort.Strings(allPlayers)
-	hostID := allPlayers[0]
+	hostID := ElectHost(allPlayers)
 	proposalHash := sha256.Sum256([]byte(strings.Join(allPlayers, "")))
 
 	proposal := LobbyProposal{
@@ -2340,14 +2373,14 @@ func HandleLobbyProposal(proposal LobbyProposal) {
 
 	proposalMutex.Lock()
 	defer proposalMutex.Unlock()
-	if bestProposal.ProposalID == "" || proposal.ProposalID < bestProposal.ProposalID {
+	if bestProposal.ProposalID == "" || proposal.AverageElo > bestProposal.AverageElo || (proposal.AverageElo == bestProposal.AverageElo && proposal.ProposalID < bestProposal.ProposalID) {
 		bestProposal = proposal
 
 		if proposalTimer != nil {
 			proposalTimer.Stop()
 		}
 
-		proposalTimer = time.AfterFunc(3*time.Second, func() {
+		proposalTimer = time.AfterFunc(5*time.Second, func() {
 			LockInLobby()
 		})
 	}
@@ -2509,6 +2542,13 @@ func GetMatchRoster(matchID *C.char) *C.char {
 	return C.CString(string(data))
 }
 
+//export BroadcastDodgePenalty
+func BroadcastDodgePenalty(peerID *C.char) {
+	pID := C.GoString(peerID)
+	queuePenalties[pID] = time.Now().Unix() + 300
+	// In a full implementation, you'd wrap this in a TxTypePenalty and broadcast to the blockchain.
+}
+
 //export GetMyPeerID
 func GetMyPeerID() *C.char {
 	return C.CString(myPeerID)
@@ -2553,6 +2593,54 @@ func AdvertiseHostLobby(mode *C.char, mapName *C.char) {
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
 	dutil.Advertise(ctx, rd, advString)
 	fmt.Printf("[P2P] Now advertising as host for mode: %s\n", modeStr)
+}
+
+//export SubmitDodgePenalty
+func SubmitDodgePenalty(matchID *C.char, dodgerPeerID *C.char) *C.char {
+	mID := C.GoString(matchID)
+	dodgerID := C.GoString(dodgerPeerID)
+
+	pubKeyBytes, err := hex.DecodeString(myPubKey)
+	if err != nil {
+		return C.CString("Error: Invalid Public Key")
+	}
+
+	payload := fmt.Sprintf("%s:%s", mID, dodgerID)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("pen_%d", time.Now().UnixNano()),
+		Type:      TxTypePenalty,
+		Sender:    h.ID().String(),
+		Receiver:  "CONSENSUS_ENGINE",
+		Amount:    0,
+		Payload:   payload,
+		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
+	}
+
+	if err := SignTransaction(myPrivKey, &tx); err != nil {
+		return C.CString("Error: Signing Failed")
+	}
+
+	EdenChain.Mutex.RLock()
+	lastIndex := EdenChain.LastBlock.Index
+	prevHash := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	newBlock := Block{
+		Index:        lastIndex + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     prevHash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		return C.CString("Success: Penalty Broadcasted")
+	}
+	return C.CString("Error: Block Rejected")
 }
 
 //export AutoConnectToPeers
@@ -2646,20 +2734,22 @@ func ConnectToPeer(peerID *C.char) {
 }
 
 //export EnterMatchmaking
-func EnterMatchmaking(mode *C.char) *C.char {
+func EnterMatchmaking(mode *C.char, partyList *C.char) *C.char {
 	if pubSub == nil || queueTopic == nil {
 		return C.CString("Error: PubSub Not Ready")
 	}
 
 	modeStr := C.GoString(mode)
-
-	// For now, we assume a solo queue.
-	// (To implement parties later, you'd iterate through a local Dart party list here)
-	party := []string{h.ID().String()}
+	partyStr := C.GoString(partyList)
+	party := strings.Split(partyStr, ",")
 
 	EdenChain.Mutex.RLock()
-	profile := EdenChain.GetOrInitProfile(h.ID().String())
-	avgElo := profile.Rating
+	var totalElo float64 = 0
+	for _, memberID := range party {
+		profile := EdenChain.GetOrInitProfile(memberID)
+		totalElo += profile.Rating
+	}
+	avgElo := totalElo / float64(len(party))
 	EdenChain.Mutex.RUnlock()
 
 	ticket := MatchmakingTicket{

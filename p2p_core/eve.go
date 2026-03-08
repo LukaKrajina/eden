@@ -40,9 +40,9 @@ const (
 	TxTypeWitness         = "MATCH_WITNESS"
 	TxTypeUpdateProfile   = "UPDATE_PROFILE"
 	TxTypeMatchResult     = "MATCH_RESULT"
-
-	AbelScale = 173.7178
-	Tau       = 0.5
+	TxTypePenalty         = "MATCH_PENALTY"
+	AbelScale             = 173.7178
+	Tau                   = 0.5
 )
 
 type Transaction struct {
@@ -145,6 +145,7 @@ type Blockchain struct {
 	AccountNonces  map[string]uint64
 	MatchSessions  map[string]MatchSessionInfo
 	MatchVotes     map[string]map[string]string `json:"match_votes"`
+	QueueBans      map[string]int64             `json:"queue_bans"`
 	Database       *leveldb.DB
 	DBPath         string
 	FriendRegistry map[string]string `json:"friend_registry"`
@@ -169,6 +170,7 @@ func InitializeChain(dbPath string) {
 		ActiveEscrows:  make(map[string]*Escrow),
 		AccountNonces:  make(map[string]uint64),
 		MatchVotes:     make(map[string]map[string]string),
+		QueueBans:      make(map[string]int64),
 		MatchSessions:  make(map[string]MatchSessionInfo),
 		FriendRegistry: make(map[string]string),
 		PublicKeys:     make(map[string]string),
@@ -398,6 +400,28 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 			}
 			if err := json.Unmarshal([]byte(tx.Payload), &res); err == nil {
 				bc.processMatchProgression(res.TargetID, res.Win, res.HLTVRating, res.TeamAvgRating, res.TeamAvgDev)
+			}
+
+		case TxTypePenalty:
+			parts := strings.Split(tx.Payload, ":")
+			if len(parts) >= 2 {
+				matchID := parts[0]
+				dodgerID := parts[1]
+
+				session, exists := bc.MatchSessions[matchID]
+
+				if exists && session.HostID == tx.Sender {
+					bc.QueueBans[dodgerID] = b.Timestamp + 300
+					profile := bc.GetOrInitProfile(dodgerID)
+					profile.Rating -= 15.0
+					if profile.Rating < 100.0 {
+						profile.Rating = 100.0
+					}
+
+					fmt.Printf("[Leaver Buster] Host %s penalized %s for dodging %s. -15 Rating, 5m cooldown.\n", tx.Sender, dodgerID, matchID)
+				} else {
+					fmt.Printf("[Leaver Buster] REJECTED: Sender %s is not the host of %s.\n", tx.Sender, matchID)
+				}
 			}
 
 		case TxTypeRegisterFriend:

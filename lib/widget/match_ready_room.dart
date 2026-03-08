@@ -70,7 +70,7 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
 
   void _pollNetworkReadiness() {
     Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (!mounted || _timeLeft <= 0) {
+      if (!mounted) {
         timer.cancel();
         return;
       }
@@ -91,6 +91,20 @@ class _MatchReadyRoomState extends State<MatchReadyRoom> {
       });
 
       bool allReady = _rosterUI.every((p) => p['isReady'] == true);
+      if (_timeLeft <= 0 && !allReady) {
+        timer.cancel();
+        Navigator.pop(context);
+        for (var p in _rosterUI) {
+          if (p['isReady'] == false) {
+            widget.p2pService.submitDodgePenalty(widget.matchID, p['id']);
+            print("[Leaver Buster] Player failed to ready up. Submitting penalty for: ${p['id']}");
+          }
+        }
+
+        widget.onTimeout();
+        return;
+      }
+
       if (allReady) {
         timer.cancel();
         Navigator.pop(context);

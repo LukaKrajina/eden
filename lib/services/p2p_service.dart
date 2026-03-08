@@ -116,8 +116,8 @@ typedef MatchFoundCallbackC = Void Function(Pointer<Utf8> matchID, Pointer<Utf8>
 typedef RegisterMatchCallbackC = Void Function(Pointer<NativeFunction<MatchFoundCallbackC>> callback);
 typedef RegisterMatchCallbackDart = void Function(Pointer<NativeFunction<MatchFoundCallbackC>> callback);
 
-typedef EnterMatchmakingC = Pointer<Utf8> Function(Pointer<Utf8> mode);
-typedef EnterMatchmakingDart = Pointer<Utf8> Function(Pointer<Utf8> mode);
+typedef EnterMatchmakingC = Pointer<Utf8> Function(Pointer<Utf8> mode, Pointer<Utf8> partyList);
+typedef EnterMatchmakingDart = Pointer<Utf8> Function(Pointer<Utf8> mode, Pointer<Utf8> partyList);
 
 typedef LeaveMatchmakingC = Void Function();
 typedef LeaveMatchmakingDart = void Function();
@@ -127,6 +127,9 @@ typedef BroadcastMapVetoDart = void Function(Pointer<Utf8> matchID, Pointer<Utf8
 
 typedef GetMatchVetoesC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 typedef GetMatchVetoesDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+
+typedef SubmitDodgePenaltyC = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> dodgerPeerID);
+typedef SubmitDodgePenaltyDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, Pointer<Utf8> dodgerPeerID);
 
 class DashboardInfo {
   final bool isMounted;
@@ -181,6 +184,7 @@ class P2PService {
   late LeaveMatchmakingDart _leaveMatchmaking;
   late BroadcastMapVetoDart _broadcastMapVeto;
   late GetMatchVetoesDart _getMatchVetoes;
+  late SubmitDodgePenaltyDart _submitDodgePenalty;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
@@ -240,6 +244,7 @@ class P2PService {
     _registerMatchCallback(Pointer.fromFunction<MatchFoundCallbackC>(_matchFoundHandler));
     _broadcastMapVeto = _lib.lookupFunction<BroadcastMapVetoC, BroadcastMapVetoDart>('BroadcastMapVeto');
     _getMatchVetoes = _lib.lookupFunction<GetMatchVetoesC, GetMatchVetoesDart>('GetMatchVetoes');
+    _submitDodgePenalty = _lib.lookupFunction<SubmitDodgePenaltyC, SubmitDodgePenaltyDart>('SubmitDodgePenalty');
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -295,15 +300,17 @@ class P2PService {
     calloc.free(ptr);
   }
 
-  String enterMatchmaking(String mode) {
-    if (!_isInitialized) return "Offline";
-    final ptr = mode.toNativeUtf8();
-    try {
-      return _consumeNativeString(_enterMatchmaking(ptr));
-    } finally {
-      calloc.free(ptr);
-    }
+  String enterMatchmaking(String mode, List<String> party) {
+  if (!_isInitialized) return "Offline";
+  final modePtr = mode.toNativeUtf8();
+  final partyPtr = party.join(",").toNativeUtf8();
+  try {
+    return _consumeNativeString(_enterMatchmaking(modePtr, partyPtr));
+  } finally {
+    calloc.free(modePtr);
+    calloc.free(partyPtr);
   }
+}
 
   void leaveMatchmaking() {
     if (_isInitialized) _leaveMatchmaking();
@@ -655,6 +662,18 @@ class P2PService {
       return [];
     } finally {
       calloc.free(ptr);
+    }
+  }
+
+  Future<String> submitDodgePenalty(String matchID, String dodgerPeerID) async {
+    if (!_isInitialized) return "Offline";
+    final mPtr = matchID.toNativeUtf8();
+    final dPtr = dodgerPeerID.toNativeUtf8();
+    try {
+      return _consumeNativeString(_submitDodgePenalty(mPtr, dPtr));
+    } finally {
+      calloc.free(mPtr);
+      calloc.free(dPtr);
     }
   }
 }

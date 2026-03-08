@@ -30,6 +30,7 @@ class _VetoRoomState extends State<VetoRoom> {
   
   List<String> _bannedMaps = [];
   Timer? _pollingTimer;
+  bool _isLoadingCaptains = true;
   late String _captainA;
   late String _captainB;
 
@@ -39,7 +40,29 @@ class _VetoRoomState extends State<VetoRoom> {
     _captainA = widget.roster.first;
     _captainB = widget.roster.last;
     
+    _assignCaptains();
     _startPolling();
+  }
+
+  Future<void> _assignCaptains() async {
+    List<Map<String, dynamic>> stats = [];
+    for (String p in widget.roster) {
+      var profile = await widget.p2pService.getPeerProfile(p);
+      stats.add({"id": p, "rating": profile["rating"] ?? 1000.0});
+    }
+
+    int half = widget.roster.length ~/ 2;
+    List<Map<String, dynamic>> teamA = stats.sublist(0, half);
+    List<Map<String, dynamic>> teamB = stats.sublist(half);
+
+    teamA.sort((a, b) => b["rating"].compareTo(a["rating"]));
+    teamB.sort((a, b) => b["rating"].compareTo(a["rating"]));
+
+    setState(() {
+      _captainA = teamA.first["id"];
+      _captainB = teamB.first["id"];
+      _isLoadingCaptains = false;
+    });
   }
 
   void _startPolling() {
