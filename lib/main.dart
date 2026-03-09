@@ -706,9 +706,12 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
 
 
   Future<void> _launchAntiCheatEngine() async {
+    int attempts = 0;
     widget.p2pService.start();
-    
-    await Future.delayed(const Duration(seconds: 10));
+    while (!widget.p2pService.checkConnectionHealth() && attempts < 20) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        attempts++;
+    }
 
     await _fetchPeerID();
     

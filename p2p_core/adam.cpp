@@ -133,7 +133,7 @@ void ReadFromTunLoop();
 extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     if (!LoadWintun()) return -1;
 
-    system("netsh interface delete interface name=\"EdenVPN\" > nul 2>&1");
+    RunHiddenCommand("netsh interface delete interface name=\"EdenVPN\" > nul 2>&1");
 
     GUID guid = { 0xdeadbeef, 0xface, 0x4ace, { 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef } };
     Adapter = ptrCreateAdapter(L"EdenVPN", L"Wintun", &guid);
@@ -143,8 +143,8 @@ extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
 
     std::string ipCmd = "netsh interface ip set address name=\"EdenVPN\" static " + std::string(virtualIP) + " 255.255.255.0 > nul 2>&1";
     std::string mtuCmd = "netsh interface ipv4 set subinterface \"EdenVPN\" mtu=1400 store=persistent > nul 2>&1";
-    system(ipCmd.c_str());
-    system(mtuCmd.c_str());
+    RunHiddenCommand(ipCmd);
+    RunHiddenCommand(mtuCmd);
 
     Session = ptrStartSession(Adapter, 0x400000);
     if (!Session) return -3;
@@ -260,6 +260,25 @@ bool LoadGoDLL() {
     return false;
 }
 
+void RunHiddenCommand(const std::string& cmd) {
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    ZeroMemory(&pi, sizeof(pi));
+
+    char* cmdBuffer = _strdup(("cmd.exe /c " + cmd).c_str());
+
+    if (CreateProcessA(NULL, cmdBuffer, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    free(cmdBuffer);
+}
+
 void ReadFromTunLoop() {
     HANDLE waitHandle = ptrGetReadWaitEvent(Session);
     
@@ -355,8 +374,16 @@ extern "C" __declspec(dllexport) void GetDashboardData(bool* isMounted, char* da
 }
 
 extern "C" __declspec(dllexport) char* GetLocalPeerID() {
-    if (ptrGetMyPeerID) return ptrGetMyPeerID();
-    return (char*)"";
+    thread_local std::string cache; 
+    char* res = ptrGetIPForPeer(peerID);
+    if (res) {
+        cache = res;
+        ptrFreeString(res);
+    } else {
+        cache = "";
+    }
+    
+    return cache.c_str();
 }
 
 

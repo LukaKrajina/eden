@@ -94,6 +94,7 @@ const (
 var (
 	h                 host.Host
 	ctx               context.Context
+	nodeCancel        context.CancelFunc
 	kademliaDHT       *dht.IpfsDHT
 	pubSub            *pubsub.PubSub
 	currentMatchID    string
@@ -913,7 +914,7 @@ func readFrame(s network.Stream) ([]byte, error) {
 //export StartEdenNode
 func StartEdenNode(virtualIP *C.char) *C.char {
 
-	ctx = context.Background()
+	ctx, nodeCancel = context.WithCancel(context.Background())
 
 	InitializeWallet()
 
@@ -1412,6 +1413,10 @@ func StopEdenNode() {
 
 	activeStreams = make(map[peer.ID]network.Stream)
 	streamLock.Unlock()
+	if nodeCancel != nil {
+		nodeCancel()
+	}
+
 	if h != nil {
 		h.Close()
 	}

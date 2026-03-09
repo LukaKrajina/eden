@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 
 typedef StartEngineC = Void Function();
@@ -371,14 +372,16 @@ class P2PService {
 
   Future<String> findMatch(String mode, String mapName) async {
     if (!_isInitialized) return "Error: Engine Not Loaded";
-    final modePtr = mode.toNativeUtf8();
-    final mapPtr = mapName.toNativeUtf8();
-    try {
-      return _consumeNativeString(_findMatch(modePtr, mapPtr));
-    } finally {
-      calloc.free(modePtr);
-      calloc.free(mapPtr);
-    }
+      return await Isolate.run(() {
+        final modePtr = mode.toNativeUtf8();
+        final mapPtr = mapName.toNativeUtf8();
+        try {
+          return _consumeNativeString(_findMatch(modePtr, mapPtr)); 
+        } finally {
+          calloc.free(modePtr);
+          calloc.free(mapPtr);
+        }
+    });
   }
 
   void advertiseHostLobby(String mode, String mapName) {

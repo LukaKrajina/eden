@@ -333,6 +333,37 @@ func (bc *Blockchain) GeneratePayouts(matchID string, winningTeam string) []Tran
 }
 
 func (bc *Blockchain) ProcessBlockState(b Block) bool {
+	tempBalances := make(map[string]float64)
+	tempNonces := make(map[string]uint64)
+
+	for _, tx := range b.Transactions {
+		isSystemTx := tx.Sender == "SYSTEM_MINT" || tx.Sender == "SYSTEM_PAYOUT"
+		if !isSystemTx {
+			if !VerifyTransaction(tx) {
+				return false
+			}
+
+			currentNonce := bc.AccountNonces[tx.Sender]
+			if tempVal, exists := tempNonces[tx.Sender]; exists {
+				currentNonce = tempVal
+			}
+			if tx.Nonce != currentNonce+1 {
+				return false
+			}
+
+			currentBal := bc.Balances[tx.Sender]
+			if tempVal, exists := tempBalances[tx.Sender]; exists {
+				currentBal = tempVal
+			}
+			if currentBal < tx.Amount {
+				return false
+			}
+
+			tempBalances[tx.Sender] = currentBal - tx.Amount
+			tempNonces[tx.Sender] = currentNonce + 1
+		}
+	}
+
 	for _, tx := range b.Transactions {
 
 		isSystemTx := tx.Sender == "SYSTEM_MINT" || tx.Sender == "SYSTEM_PAYOUT"
