@@ -10,6 +10,7 @@ class MatchRosterDialog extends StatefulWidget {
   final String myPeerID;
   final Lgpkg lgpkgService;
   final P2PService p2pService;
+  final VoidCallback onReturnToLobby;
 
   const MatchRosterDialog({
     super.key,
@@ -19,6 +20,7 @@ class MatchRosterDialog extends StatefulWidget {
     required this.myPeerID,
     required this.lgpkgService,
     required this.p2pService,
+    required this.onReturnToLobby,
   });
 
   @override
@@ -32,10 +34,37 @@ class _MatchRosterDialogState extends State<MatchRosterDialog> {
   String _matchPhase = "";
   Timer? _gsiTimer;
 
+  Map<String, dynamic> _postMatchStats = {};
+  Map<String, Map<String, dynamic>> _initialProfiles = {};
+  Map<String, Map<String, dynamic>> _finalProfiles = {};
+
   @override
   void initState() {
     super.initState();
+    _fetchInitialProfiles();
     _startGsiPolling();
+  }
+
+  Future<void> _fetchInitialProfiles() async {
+    for (String peer in widget.matchRoster) {
+      if (peer.isNotEmpty) {
+        _initialProfiles[peer] = await widget.p2pService.getPeerProfile(peer);
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _fetchFinalStats() async {
+    await Future.delayed(const Duration(seconds: 5));
+    
+    _postMatchStats = await widget.p2pService.getMatchStats(widget.matchID);
+    
+    for (String peer in widget.matchRoster) {
+      if (peer.isNotEmpty) {
+        _finalProfiles[peer] = await widget.p2pService.getPeerProfile(peer);
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   void _startGsiPolling() {
@@ -75,6 +104,7 @@ class _MatchRosterDialogState extends State<MatchRosterDialog> {
                   ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(widget.lgpkgService.get("MatchEndedMining")))
                   );
+                  _fetchFinalStats();
                 }
               }
             });
@@ -93,6 +123,8 @@ class _MatchRosterDialogState extends State<MatchRosterDialog> {
 
   @override
   Widget build(BuildContext context) {
+    bool isFinished = _matchPhase == "MATCH FINISHED";
+
     return Dialog(
       backgroundColor: const Color(0xFF121212),
       shape: RoundedRectangleBorder(
@@ -105,47 +137,165 @@ class _MatchRosterDialogState extends State<MatchRosterDialog> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text(
-              "$_matchPhase - ${widget.selectedModeTitle}", 
-              style: TextStyle(
-                color: _matchPhase == "MATCH LIVE" ? Colors.green : Colors.white, 
-                fontSize: 24, 
-                fontFamily: "Oswald", 
-                fontWeight: FontWeight.bold
-              )
-            ),
-            const SizedBox(height: 24),
-            Expanded(child: _buildDynamicPlayerGrid()),
-            if (_matchPhase == "MATCH FINISHED") ...[
-              const SizedBox(height: 24),
-              SizedBox(
-                width: 350,
-                height: 60,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6600), 
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (isFinished)
+                  InkWell(
+                    onTap: () {
+                      widget.onReturnToLobby();
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1F1F1F),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFFFF6600)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.arrow_back, color: Color(0xFFFF6600), size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            "RETURN", 
+                            style: const TextStyle(color: Color(0xFFFF6600), fontWeight: FontWeight.bold)
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: Text(
-                    "ReturnToLobby", 
-                    style: const TextStyle(
-                      fontSize: 18, 
-                      fontWeight: FontWeight.bold, 
-                      letterSpacing: 2, 
-                      color: Colors.white
-                    ),
-                  ),
+                  )
+                else 
+                  const SizedBox(width: 120),
+
+                Text(
+                  "$_matchPhase - ${widget.selectedModeTitle}", 
+                  style: TextStyle(
+                    color: isFinished ? Colors.green : Colors.white, 
+                    fontSize: 24, 
+                    fontFamily: "Oswald", 
+                    fontWeight: FontWeight.bold
+                  )
                 ),
-              ),
-            ]
+
+                if (isFinished)
+                   Container(
+                     width: 120, 
+                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                     decoration: BoxDecoration(
+                       color: Colors.green.withValues(alpha: 0.1),
+                       borderRadius: BorderRadius.circular(4),
+                       border: Border.all(color: Colors.green)
+                     ),
+                     child: const Center(
+                       child: Text("+ Mining EDN", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                     ),
+                   )
+                else 
+                  const SizedBox(width: 120),
+              ],
+            ),
+            
+            const SizedBox(height: 24),
+            
+            Expanded(
+              child: isFinished 
+                  ? _buildPostMatchSummary()
+                  : _buildDynamicPlayerGrid(),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPostMatchSummary() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          color: const Color(0xFF1F1F1F),
+          child: Row(
+            children: [
+              Expanded(flex: 3, child: Text(widget.lgpkgService.get("HeaderPlayer") ?? "PLAYER", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(widget.lgpkgService.get("HeaderKills") ?? "K", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(widget.lgpkgService.get("HeaderAssists") ?? "A", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(widget.lgpkgService.get("HeaderDeaths") ?? "D", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              Expanded(child: Text(widget.lgpkgService.get("HeaderRating") ?? "+/- RATING", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+              const Expanded(child: Text("XP GAIN", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: widget.matchRoster.length,
+            itemBuilder: (ctx, i) {
+              String playerID = widget.matchRoster[i];
+              if (playerID.isEmpty) return const SizedBox.shrink();
+              
+              bool isMe = playerID == widget.myPeerID;
+              
+              int kills = _postMatchStats[playerID]?['kills'] ?? 0;
+              int assists = _postMatchStats[playerID]?['assists'] ?? 0;
+              int deaths = _postMatchStats[playerID]?['deaths'] ?? 0;
+
+              double initialRating = _initialProfiles[playerID]?['rating'] ?? 1500.0;
+              double finalRating = _finalProfiles[playerID]?['rating'] ?? initialRating;
+              double ratingChange = finalRating - initialRating;
+
+              double initialXP = _initialProfiles[playerID]?['xp'] ?? 0.0;
+              double finalXP = _finalProfiles[playerID]?['xp'] ?? initialXP;
+              int xpGain = (finalXP - initialXP).round();
+              
+              bool ratingPositive = ratingChange > 0;
+
+              return Container(
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF333333)))),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3, 
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 12, 
+                            backgroundColor: Colors.grey[800], 
+                            child: const Icon(Icons.person, size: 12, color: Colors.white)
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            isMe ? "You" : "Player ${playerID.substring(playerID.length - 4)}", 
+                            style: TextStyle(fontWeight: FontWeight.bold, color: isMe ? const Color(0xFFFF6600) : Colors.white)
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(child: Text("$kills", style: const TextStyle(color: Colors.white))),
+                    Expanded(child: Text("$assists", style: const TextStyle(color: Colors.white))),
+                    Expanded(child: Text("$deaths", style: const TextStyle(color: Colors.white))),
+                    Expanded(
+                      child: Text(
+                        "${ratingPositive ? '+' : ''}${ratingChange.toStringAsFixed(1)}", 
+                        style: TextStyle(
+                          color: ratingPositive ? Colors.green : Colors.red, 
+                          fontWeight: FontWeight.bold
+                        )
+                      )
+                    ),
+                    Expanded(
+                      child: Text(
+                        "+$xpGain XP", 
+                        style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)
+                      )
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

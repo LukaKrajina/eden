@@ -134,6 +134,9 @@ typedef SubmitDodgePenaltyDart = Pointer<Utf8> Function(Pointer<Utf8> matchID, P
 typedef GetMyBanExpiryC = Pointer<Utf8> Function();
 typedef GetMyBanExpiryDart = Pointer<Utf8> Function();
 
+typedef GetMatchStatsC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+typedef GetMatchStatsDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -189,6 +192,7 @@ class P2PService {
   late GetMatchVetoesDart _getMatchVetoes;
   late SubmitDodgePenaltyDart _submitDodgePenalty;
   late GetMyBanExpiryDart _getMyBanExpiry;
+  late GetMatchStatsDart _getMatchStats;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
@@ -250,6 +254,7 @@ class P2PService {
     _getMatchVetoes = _lib.lookupFunction<GetMatchVetoesC, GetMatchVetoesDart>('GetMatchVetoes');
     _submitDodgePenalty = _lib.lookupFunction<SubmitDodgePenaltyC, SubmitDodgePenaltyDart>('SubmitDodgePenalty');
     _getMyBanExpiry = _lib.lookupFunction<GetMyBanExpiryC, GetMyBanExpiryDart>('GetMyBanExpiry');
+    _getMatchStats = _lib.lookupFunction<GetMatchStatsC, GetMatchStatsDart>('GetMatchStats');
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -689,6 +694,19 @@ class P2PService {
       return int.tryParse(val) ?? 0;
     } catch (e) {
       return 0;
+    }
+  }
+
+  Future<Map<String, dynamic>> getMatchStats(String matchID) async {
+    if (!_isInitialized) return {};
+    final ptr = matchID.toNativeUtf8();
+    try {
+      final jsonStr = _consumeNativeString(_getMatchStats(ptr));
+      return jsonDecode(jsonStr);
+    } catch (e) {
+      return {};
+    } finally {
+      calloc.free(ptr);
     }
   }
 }

@@ -860,6 +860,17 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                         myPeerID: _myPeerID,
                         lgpkgService: _lgpkg,
                         p2pService: widget.p2pService,
+                        onReturnToLobby: () {
+                          if (hostID == _myPeerID) {
+                            _runner.stopServer();
+                          } else {
+                            _runner.stopClient(g_selectedGame);
+                          }
+                          setState(() {
+                            _status = _lgpkg.get("WaitingAction");
+                            _isSearching = false;
+                          });
+                        },
                       ),
                     );
                   },
@@ -990,6 +1001,13 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         myPeerID: _myPeerID,
         lgpkgService: _lgpkg,
         p2pService: widget.p2pService,
+        onReturnToLobby: () {
+          _runner.stopClient(g_selectedGame);
+          setState(() {
+            _status = _lgpkg.get("WaitingAction");
+            _isSearching = false;
+          });
+        },
       ),
     );
   }

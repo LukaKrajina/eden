@@ -315,6 +315,7 @@ var netStats NetworkStats
 var lastSeenPeer time.Time
 var peerMutex sync.Mutex
 var sessionMutex sync.RWMutex
+var statsMutex sync.RWMutex
 var localGSIToken string
 var friendStorePath string
 var myPeerID string
@@ -325,6 +326,7 @@ var roundsPlayed int = 0
 var activeSession *LiveMatchSession
 var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
 var queuePenalties = make(map[string]int64)
+var FinalMatchStats = make(map[string]map[string]interface{})
 
 //export UpdateMyProfile
 func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
@@ -571,6 +573,33 @@ func StartGSIServer() {
 		if state.Map.Phase == "gameover" && currentMatchID != "" {
 			sessionMutex.Lock()
 			defer sessionMutex.Unlock()
+
+			statsMutex.Lock()
+			matchStats := make(map[string]interface{})
+			if allPlayers, ok := rawData["allplayers"].(map[string]interface{}); ok {
+				for steamID, pData := range allPlayers {
+					pMap := pData.(map[string]interface{})
+					if matchStatsMap, ok := pMap["match_stats"].(map[string]interface{}); ok {
+						kills := int(matchStatsMap["kills"].(float64))
+						assists := int(matchStatsMap["assists"].(float64))
+						deaths := int(matchStatsMap["deaths"].(float64))
+
+						EdenChain.Mutex.RLock()
+						peerID := EdenChain.SteamToPeerID[steamID]
+						EdenChain.Mutex.RUnlock()
+
+						if peerID != "" {
+							matchStats[peerID] = map[string]interface{}{
+								"kills":   kills,
+								"assists": assists,
+								"deaths":  deaths,
+							}
+						}
+					}
+				}
+			}
+			FinalMatchStats[currentMatchID] = matchStats
+			statsMutex.Unlock()
 
 			myVerdict := "CT"
 			winningTeamName := activeSession.CTTeamName
@@ -2564,6 +2593,20 @@ func BroadcastDodgePenalty(peerID *C.char) {
 	pID := C.GoString(peerID)
 	queuePenalties[pID] = time.Now().Unix() + 300
 	// In a full implementation, you'd wrap this in a TxTypePenalty and broadcast to the blockchain.
+}
+
+//export GetMatchStats
+func GetMatchStats(matchID *C.char) *C.char {
+	mID := C.GoString(matchID)
+	statsMutex.RLock()
+	defer statsMutex.RUnlock()
+
+	stats, exists := FinalMatchStats[mID]
+	if !exists {
+		return C.CString("{}")
+	}
+	data, _ := json.Marshal(stats)
+	return C.CString(string(data))
 }
 
 //export GetMyPeerID
