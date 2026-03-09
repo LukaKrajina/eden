@@ -13,7 +13,9 @@ class MatchOrchestrator {
   
   Timer? _warmupTimer;
 
-  MatchOrchestrator(this.gameRunner, this.gsiServer, this.p2pService);
+  MatchOrchestrator(this.gameRunner, this.gsiServer, this.p2pService){
+    gsiServer.onMatchLive = cancelWarmupTimer;
+  }
 
   Future<String> hostMatch(String gamePath,
       String gameVersion,
@@ -158,5 +160,12 @@ class MatchOrchestrator {
     print("[Orchestrator] Manual join successfully resolved -> MatchID: $matchID | Host: $hostPeerID");
     
     await joinMatch(gamePath, gameVersion, matchID, hostPeerID, playerName);
+  }
+
+  void cancelWarmupTimer() {
+    if (_warmupTimer != null && _warmupTimer!.isActive) {
+      print("[Orchestrator] Match went live. Canceling warmup timer.");
+      _warmupTimer!.cancel();
+    }
   }
 }

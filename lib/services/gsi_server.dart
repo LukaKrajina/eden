@@ -13,6 +13,7 @@ class GsiServer {
   final Set<String> _uniquePlayers = {};
   bool _isMatchLive = false;
   final P2PService _p2p = P2PService();
+  Function()? onMatchLive;
 
   Future<void> startServer() async {
     if (_server != null) await _server!.close(force: true);
@@ -55,6 +56,7 @@ class GsiServer {
       print("[GSI] Match Started - Tracking for Mining...");
       _matchStart = DateTime.now();
       _isMatchLive = true;
+      onMatchLive?.call();
     }
 
     if (_isMatchLive && data.containsKey('allplayers')) {

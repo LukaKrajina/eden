@@ -2026,6 +2026,15 @@ func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 		s.Write(frame)
 	}
 
+	for _, s := range streams {
+		frameCopy := make([]byte, totalLen)
+		copy(frameCopy, frame)
+
+		go func(stream network.Stream, asyncFrame []byte) {
+			stream.Write(asyncFrame)
+		}(s, frameCopy)
+	}
+
 	bufferPool.Put(bufPtr)
 }
 
