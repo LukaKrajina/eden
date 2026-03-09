@@ -326,7 +326,6 @@ var state GSIState
 var roundsPlayed int = 0
 var activeSession *LiveMatchSession
 var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
-var queuePenalties = make(map[string]int64)
 var FinalMatchStats = make(map[string]map[string]interface{})
 
 //export UpdateMyProfile
@@ -2606,13 +2605,6 @@ func GetMatchRoster(matchID *C.char) *C.char {
 	}
 
 	return C.CString(string(data))
-}
-
-//export BroadcastDodgePenalty
-func BroadcastDodgePenalty(peerID *C.char) {
-	pID := C.GoString(peerID)
-	queuePenalties[pID] = time.Now().Unix() + 300
-	// In a full implementation, you'd wrap this in a TxTypePenalty and broadcast to the blockchain.
 }
 
 //export GetMatchStats
