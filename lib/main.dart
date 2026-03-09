@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert'; // Added for JSON
 import 'package:eden/misc/mod_config_mapper.dart';
 import 'package:eden/widget/match_ready_room.dart';
+import 'package:eden/widget/match_roster_dialog.dart';
 import 'package:eden/widget/vote_room.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -218,7 +219,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   final TextEditingController _friendCodeController = TextEditingController();
   late TextEditingController _nameController;
   Timer? _refreshTimer;
-  Timer? _scoreTimer;
   Timer? _pollNetworkTimer;
   Timer? _steamIdTimer;
   Timer? _pollMatchesTimer;
@@ -227,7 +227,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   String _myFriendCode = "";
   String _status = "WAITING FOR ACTION"; 
   String _level = "10";
-  String _score = "CT 0 - 0 T";
   bool _isWhiteMode = false;
   bool _isSearching = false;
   bool _isEngineRunning = false;
@@ -274,11 +273,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
     _steamApiKeyController.text = g_steamApiKey;
 
     _pollNetworkState();
-    _scoreAcquirer();
     _steamIdAcquirer();
 
     _pollMatchesTimer = Timer.periodic(const Duration(seconds: 1),(_) => _pollNetworkState());
-    _scoreTimer = Timer.periodic(const Duration(seconds: 1), (_) => _scoreAcquirer());
     _steamIdTimer = Timer.periodic(const Duration(seconds: 2), (_) => _steamIdAcquirer());
     
     _pollLiveMatches();
@@ -313,7 +310,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   @override
   void dispose() {
     _pollNetworkTimer?.cancel();
-    _scoreTimer?.cancel();
     _steamIdTimer?.cancel();
     _pollMatchesTimer?.cancel();
     if(_refreshTimer != null && _refreshTimer!.isActive){
@@ -336,52 +332,6 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         setState(() => _banExpiryTimestamp = expiry);
       }
     }
-  }
-
-  Future<void> _scoreAcquirer() async {
-    widget.gsiServer.onDataReceived = (data) {
-      if (!mounted) return;
-
-      if (data.containsKey('map')) {
-        final mapData = data['map'];
-        
-        int ctScore = 0;
-        int tScore = 0;
-        String phase = mapData['phase'] ?? 'unknown';
-
-        if (mapData['team_ct'] != null && mapData['team_ct']['score'] != null) {
-          ctScore = mapData['team_ct']['score'];
-        }
-
-        if (mapData['team_t'] != null && mapData['team_t']['score'] != null) {
-          tScore = mapData['team_t']['score'];
-        }
-
-        setState(() {
-          if (phase == 'warmup') {
-            _score = _lgpkg.get("Warmup");
-          } else if (phase == 'intermission') {
-            _score = _lgpkg.get("HalfTime");
-          } else if (phase == 'gameover') {
-            _score = "${_lgpkg.get("Final")}: CT $ctScore - $tScore T";
-            if (!_hasMinedThisMatch) {
-               _hasMinedThisMatch = true; 
-               
-               int duration = 1800; 
-               int players = int.parse(_maxPlayers);
-               
-               widget.p2pService.submitMatchReward(duration, players);
-               
-               ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(_lgpkg.get("MatchEndedMining")))
-               );
-            }
-          } else {
-            _score = "CT $ctScore - $tScore T";
-          }
-        });
-      }
-    };
   }
 
   Future<void>_steamIdAcquirer() async {
@@ -897,6 +847,21 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
                         activePath, g_selectedGame, foundMatchID!, hostID, _nameController.text
                       );
                     }
+
+                    if(!mounted) return;
+
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false, 
+                      builder: (ctx) => MatchRosterDialog(
+                        matchID: foundMatchID!,
+                        selectedModeTitle: _selectedModeTitle,
+                        matchRoster: actualRoster,
+                        myPeerID: _myPeerID,
+                        lgpkgService: _lgpkg,
+                        p2pService: widget.p2pService,
+                      ),
+                    );
                   },
                 ),
               );
@@ -1009,6 +974,23 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
       resolvedMatchID, 
       inputPeerID, 
       _nameController.text
+    );
+
+    List<String> actualRoster = await widget.p2pService.getMatchRoster(resolvedMatchID);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => MatchRosterDialog(
+        matchID: resolvedMatchID!,
+        selectedModeTitle: _selectedModeTitle,
+        matchRoster: actualRoster, 
+        myPeerID: _myPeerID,
+        lgpkgService: _lgpkg,
+        p2pService: widget.p2pService,
+      ),
     );
   }
 
@@ -1446,58 +1428,52 @@ Widget _buildFriendList() {
         const SizedBox(height: 24),
         Text(_lgpkg.get("TeamRoster"), style: const TextStyle(color: kEdenTextDim, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
         const SizedBox(height: 10),
-        Expanded(child: _buildDynamicPlayerGrid()),
+        Expanded(child: _buildPartyList()),
       ],
     );
   }
 
-  Widget _buildDynamicPlayerGrid() {
-    if (_selectedModeTitle == "DEATHMATCH") {
-      return GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 2.5, crossAxisSpacing: 10, mainAxisSpacing: 10),
-        itemCount: 16, itemBuilder: (ctx, i) => _buildPlayerRow(i, true, compact: true),
-      );
-    } else if (_selectedModeTitle == "1V1 HUBS") {
-      return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          SizedBox(width: 200, child: _buildPlayerRow(0, true, scale: 1.2)),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 40), child: Text(_lgpkg.get("VS"), style: const TextStyle(fontSize: 40, color: kEdenOrange, fontFamily: "Oswald"))),
-          SizedBox(width: 200, child: _buildPlayerRow(1, false, scale: 1.2)),
-      ]);
-    } else {
-      return Row(children: [
-          Expanded(child: Column(children: List.generate(5, (i) => _buildPlayerRow(i, true)))),
-          const SizedBox(width: 24),
-          Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(_lgpkg.get("VS"), style: TextStyle(color: kEdenTextDim.withOpacity(0.3), fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(_score, style: const TextStyle(color: kEdenOrange, fontWeight: FontWeight.bold)),
-          ]),
-          const SizedBox(width: 24),
-          Expanded(child: Column(children: List.generate(5, (i) => _buildPlayerRow(i, false)))),
-      ]);
-    }
-  }
+  Widget _buildPartyList() {
+  int maxPartySize = _selectedModeTitle == "1V1 HUBS" ? 1 : 
+                     _selectedModeTitle == "DEATHMATCH" ? 1 :
+                     _selectedModeTitle == "TOURNAMENTS" ? 6 : 5;
+  return Column(
+    children: List.generate(maxPartySize, (index) {
+      bool isOccupied = index < _currentParty.length;
+      bool isMe = isOccupied && _currentParty[index] == _myPeerID;
 
-  Widget _buildPlayerRow(int index, bool isMyTeam, {bool compact = false, double scale = 1.0}) {
-    bool isMe = isMyTeam && index == 0;
-    Widget content = Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(color: kEdenSurface, border: Border(left: BorderSide(color: isMe ? kEdenOrange : Colors.transparent, width: 3))),
-      child: Row(
-        children: [
-          CircleAvatar(radius: 16, backgroundColor: Colors.grey[800], backgroundImage: (isMe && _avatarImage != null) ? FileImage(_avatarImage!) : null, child: (isMe && _avatarImage == null) ? const Icon(Icons.person, size: 16) : null),
-          const SizedBox(width: 12),
-          if (!compact) ...[
-            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text(isMe ? _nameController.text : _lgpkg.get("EmptySlot"), style: TextStyle(color: isMe ? Colors.white : kEdenTextDim, fontWeight: FontWeight.bold)), if (isMe) Text("Lvl $_level", style: const TextStyle(color: kEdenOrange, fontSize: 10))]),
-            const Spacer(), if (isMe) const Icon(Icons.check_circle, color: kEdenOrange, size: 16),
-          ]
-        ],
-      ),
-    );
-    if (scale != 1.0) return Transform.scale(scale: scale, child: content);
-    return content;
-  }
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: isOccupied ? kEdenSurface : Colors.transparent,
+          border: Border.all(
+            color: isOccupied ? kEdenOrange : kEdenBorder.withOpacity(0.3),
+            width: isOccupied ? 1 : 1,
+            style: isOccupied ? BorderStyle.solid : BorderStyle.none
+          ),
+          borderRadius: BorderRadius.circular(4)
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: isOccupied ? Colors.grey[800] : Colors.transparent,
+              backgroundImage: (isMe && _avatarImage != null) ? FileImage(_avatarImage!) : null,
+              child: (isMe && _avatarImage == null) ? const Icon(Icons.person, size: 16) : 
+                     (!isOccupied ? const Icon(Icons.person_outline, size: 16, color: Colors.white30) : null),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              isOccupied ? (isMe ? _nameController.text : "Party Member") : _lgpkg.get("EmptySlot"),
+              style: TextStyle(color: isOccupied ? Colors.white : kEdenTextDim, fontWeight: FontWeight.bold)
+            ),
+          ],
+        ),
+      );
+    }),
+  );
+}
 
   Widget _buildRightPanel() {
     int nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
