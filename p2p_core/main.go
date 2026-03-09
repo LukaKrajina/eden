@@ -445,11 +445,17 @@ func StartGSIServer() {
 			return
 		}
 
+		var localState GSIState
+
 		body, _ := io.ReadAll(r.Body)
 		var rawData map[string]interface{}
 		json.Unmarshal(body, &rawData)
-		json.Unmarshal(body, &state)
+		json.Unmarshal(body, &localState)
 		w.WriteHeader(http.StatusOK)
+
+		sessionMutex.Lock()
+		state = localState
+		sessionMutex.Unlock()
 
 		if state.Map.Phase == "warmup" {
 			matchLive = false

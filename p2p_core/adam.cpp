@@ -264,7 +264,7 @@ void ReadFromTunLoop() {
     HANDLE waitHandle = ptrGetReadWaitEvent(Session);
     
     while (IsRunning) {
-        if (WaitForSingleObject(waitHandle, INFINITE) == WAIT_OBJECT_0) {
+        if (WaitForSingleObject(waitHandle, 100) == WAIT_OBJECT_0) {
             DWORD packetSize;
             BYTE* packet = ptrReceivePacket(Session, &packetSize);
             

@@ -342,7 +342,9 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
   Future<void> _fetchPeerID() async {
     if (_myPeerID.isEmpty || _myPeerID == "Offline") {
       String id = await widget.p2pService.getMyID();
-      setState(() => _myPeerID = id);
+      if (mounted) {
+        setState(() => _myPeerID = id);
+      }
     }
   }
 

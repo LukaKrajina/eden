@@ -526,7 +526,7 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 					duration = 600
 				}
 
-				seed := time.Now().UnixNano()
+				seed := b.Timestamp
 				rng := math.Round(float64(seed)) * 0.000011574074
 				hostReward := float64(duration) * rng
 
@@ -921,8 +921,6 @@ func (bc *Blockchain) processEscrowLock(tx Transaction) {
 }
 
 func (bc *Blockchain) ResolveMatch(matchID string, winningTeam string) []Transaction {
-	bc.Mutex.Lock()
-	defer bc.Mutex.Unlock()
 
 	pool, exists := bc.ActivePools[matchID]
 	if !exists || !pool.IsOpen {
