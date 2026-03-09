@@ -237,17 +237,19 @@ type FriendHandshake struct {
 }
 
 type SyncRequest struct {
-	Type  string `json:"type"`
-	Index int    `json:"index"`
-	Hash  string `json:"hash"`
-	Limit int    `json:"limit"`
+	Type        string  `json:"type"`
+	Index       int     `json:"index"`
+	Hash        string  `json:"hash"`
+	Limit       int     `json:"limit"`
+	ChainWeight float64 `json:"chain_weight"`
 }
 
 type SyncResponse struct {
-	Height int     `json:"height"`
-	Hash   string  `json:"hash"`
-	Match  bool    `json:"match"`
-	Blocks []Block `json:"blocks"`
+	Height      int     `json:"height"`
+	Hash        string  `json:"hash"`
+	Match       bool    `json:"match"`
+	Blocks      []Block `json:"blocks"`
+	ChainWeight float64 `json:"chain_weight"`
 }
 
 type SteamTradeOfferResponse struct {
@@ -1124,9 +1126,15 @@ func TriggerSync(pID peer.ID) {
 
 	EdenChain.Mutex.RLock()
 	localHeight := EdenChain.LastBlock.Index + 1
+	localWeight := EdenChain.LastBlock.ChainWeight
 	EdenChain.Mutex.RUnlock()
 
-	fmt.Printf("[Sync] Peer Height: %d | Local Height: %d\n", status.Height, localHeight)
+	fmt.Printf("[Sync] Peer Weight: %.2f | Local Weight: %.2f | Peer Height: %d | Local Height: %d\n", status.ChainWeight, localWeight, status.Height, localHeight)
+
+	if status.ChainWeight <= localWeight {
+		fmt.Println("[Sync] Peer chain is not heavier. Rejecting sync.")
+		return
+	}
 
 	if status.Height == 0 {
 		return

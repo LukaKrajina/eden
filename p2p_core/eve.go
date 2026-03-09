@@ -27,6 +27,9 @@ import (
 )
 
 const (
+	TxTypeStake           = "STAKE_FUNDS"
+	TxTypeTribunal        = "TRIBUNAL_VERDICT"
+	TxTypeSteamPrime      = "VERIFY_PRIME"
 	TxTypeRegisterSteamID = "REGISTER_STEAM"
 	TxTypeRegisterFriend  = "REGISTER_FRIEND"
 	TxTypeTransfer        = "TRANSFER"
@@ -67,18 +70,20 @@ type GameProof struct {
 }
 
 type UserProfile struct {
-	PeerID     string  `json:"peer_id"`
-	SteamID    string  `json:"steam_id"`
-	Username   string  `json:"username"`
-	AvatarURL  string  `json:"avatar_url"`
-	XP         float64 `json:"xp"`
-	Level      int     `json:"level"`
-	Rating     float64 `json:"rating"`
-	AvgRating  float64 `json:"avg_rating"`
-	Matches    int     `json:"matches"`
-	Wins       int     `json:"wins"`
-	Deviation  float64 `json:"deviation"`
-	Volatility float64 `json:"volatility"`
+	PeerID          string  `json:"peer_id"`
+	SteamID         string  `json:"steam_id"`
+	Username        string  `json:"username"`
+	AvatarURL       string  `json:"avatar_url"`
+	XP              float64 `json:"xp"`
+	Level           int     `json:"level"`
+	Rating          float64 `json:"rating"`
+	AvgRating       float64 `json:"avg_rating"`
+	Matches         int     `json:"matches"`
+	Wins            int     `json:"wins"`
+	Deviation       float64 `json:"deviation"`
+	Volatility      float64 `json:"volatility"`
+	IsPrimeVerified bool    `json:"is_prime_verified"`
+	StakedEDN       float64 `json:"staked_edn"`
 }
 
 type Auction struct {
@@ -94,9 +99,18 @@ type Auction struct {
 }
 
 type MatchSessionInfo struct {
-	HostID    string
-	StartTime int64
-	Roster    []string
+	HostID     string
+	StartTime  int64
+	Roster     []string
+	MatchStake float64
+	State      string
+	HostDemo   string
+	Witnesses  map[string]WitnessVote
+}
+
+type WitnessVote struct {
+	WinnerTeam string
+	DemoHash   string
 }
 
 type Bet struct {
@@ -126,12 +140,14 @@ type Escrow struct {
 }
 
 type Block struct {
-	Index        int           `json:"index"`
-	Timestamp    int64         `json:"timestamp"`
-	Transactions []Transaction `json:"transactions"`
-	GameData     *GameProof    `json:"game_data,omitempty"`
-	PrevHash     string        `json:"prev_hash"`
-	Hash         string        `json:"hash"`
+	Index         int               `json:"index"`
+	Timestamp     int64             `json:"timestamp"`
+	Transactions  []Transaction     `json:"transactions"`
+	GameData      *GameProof        `json:"game_data,omitempty"`
+	PrevHash      string            `json:"prev_hash"`
+	Hash          string            `json:"hash"`
+	ValidatorSigs map[string]string `json:"validator_sigs"`
+	ChainWeight   float64           `json:"chain_weight"`
 }
 
 type Blockchain struct {
@@ -378,6 +394,7 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 		}
 
 		switch tx.Type {
+
 		case TxTypeRegisterSteamID:
 			steamID := tx.Payload
 			if steamID != "" {
@@ -589,6 +606,19 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 
 				delete(bc.MatchSessions, matchID)
 				delete(bc.MatchVotes, matchID)
+			}
+
+		case TxTypeStake:
+			profile := bc.GetOrInitProfile(tx.Sender)
+			profile.StakedEDN += tx.Amount
+			fmt.Printf("[Staking] %s staked %.2f EDN to become a Validator.\n", tx.Sender, tx.Amount)
+
+		case TxTypeSteamPrime:
+			if tx.Sender == "SYSTEM_ORACLE" {
+				targetPeer := tx.Payload
+				profile := bc.GetOrInitProfile(targetPeer)
+				profile.IsPrimeVerified = true
+				fmt.Printf("[Identity] Peer %s verified as CS2 Prime.\n", targetPeer)
 			}
 		}
 	}
@@ -1092,19 +1122,85 @@ func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {
 	}
 
 	newBlock := Block{
-		Index:        index,
-		Timestamp:    time.Now().Unix(),
-		Transactions: []Transaction{rewardTx},
-		GameData:     &proof,
-		PrevHash:     lastBlock.Hash,
+		Index:         index,
+		Timestamp:     time.Now().Unix(),
+		Transactions:  []Transaction{rewardTx},
+		GameData:      &proof,
+		PrevHash:      lastBlock.Hash,
+		ValidatorSigs: make(map[string]string),
 	}
 
 	newBlock.Hash = calculateHash(newBlock)
+	newBlock.ChainWeight = lastBlock.ChainWeight + bc.CalculateValidatorWeight(newBlock.Hash, newBlock.ValidatorSigs)
 
 	if bc.AddBlock(newBlock) {
 		return newBlock
 	}
 	return Block{}
+}
+
+func (bc *Blockchain) CalculateValidatorWeight(blockHash string, signatures map[string]string) float64 {
+	bc.Mutex.RLock()
+	defer bc.Mutex.RUnlock()
+
+	var totalWeight float64 = 0.0
+
+	hashBytes, err := hex.DecodeString(blockHash)
+	if err != nil {
+		fmt.Println("[Consensus] Error: Invalid block hash format.")
+		return 1.0
+	}
+
+	for peerID, sigHex := range signatures {
+		pubKeyHex, exists := bc.PublicKeys[peerID]
+		if !exists {
+			fmt.Printf("[Consensus] Rejected: No known public key for validator %s\n", peerID)
+			continue
+		}
+
+		pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+		if err != nil {
+			continue
+		}
+
+		genericPublicKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+		if err != nil {
+			fmt.Printf("[Consensus] Rejected: Malformed public key for %s\n", peerID)
+			continue
+		}
+
+		pubKey, ok := genericPublicKey.(*ecdsa.PublicKey)
+		if !ok {
+			continue
+		}
+
+		sigBytes, err := hex.DecodeString(sigHex)
+		if err != nil || len(sigBytes) != 64 {
+			fmt.Printf("[Consensus] Rejected: Invalid signature length from %s\n", peerID)
+			continue
+		}
+
+		r := big.NewInt(0).SetBytes(sigBytes[:32])
+		s := big.NewInt(0).SetBytes(sigBytes[32:])
+
+		isValid := ecdsa.Verify(pubKey, hashBytes, r, s)
+		if !isValid {
+			fmt.Printf("[Consensus] FRAUD DETECTED: Invalid signature from %s\n", peerID)
+			continue
+		}
+
+		profile, exists := bc.Profiles[peerID]
+		if exists && profile.StakedEDN > 0 {
+			totalWeight += profile.StakedEDN
+			fmt.Printf("[Consensus] Accepted valid signature from %s (Weight: %.2f)\n", peerID, profile.StakedEDN)
+		}
+	}
+
+	if totalWeight == 0 {
+		return 1.0
+	}
+
+	return totalWeight
 }
 
 func CalculateReward(proof *GameProof) float64 {
