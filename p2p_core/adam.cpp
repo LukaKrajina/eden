@@ -79,6 +79,7 @@ typedef char* (*GetMatchVetoesFunc)(char* matchID);
 typedef char* (*SubmitDodgePenaltyFunc)(char* matchID, char* dodgerPeerID);
 typedef char* (*GetMyBanExpiryFunc)();
 typedef char* (*GetMatchStatsFunc)(char* matchID);
+typedef const char* (*GetValidatorMetricsFunc)(char* peerID);
 typedef void (*FreeStringFunc)(char* str);
 
 GetGSITokenFunc ptrGetGSIToken = nullptr;
@@ -125,6 +126,7 @@ static GetMatchVetoesFunc ptrGetMatchVetoes = nullptr;
 SubmitDodgePenaltyFunc ptrSubmitDodgePenalty = nullptr;
 GetMyBanExpiryFunc ptrGetMyBanExpiry = nullptr;
 static GetMatchStatsFunc ptrGetMatchStats = nullptr;
+static GetValidatorMetricsFunc ptrGetValidatorMetrics = nullptr;
 static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
@@ -248,6 +250,7 @@ bool LoadGoDLL() {
     ptrSubmitDodgePenalty = (SubmitDodgePenaltyFunc)GetProcAddress(hGo, "SubmitDodgePenalty");
     ptrGetMyBanExpiry = (GetMyBanExpiryFunc)GetProcAddress(hGo, "GetMyBanExpiry");
     ptrGetMatchStats = (GetMatchStatsFunc)GetProcAddress(hGo, "GetMatchStats");
+    ptrGetValidatorMetrics = (GetValidatorMetricsFunc)GetProcAddress(hGo, "GetValidatorMetrics")
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -585,6 +588,13 @@ extern "C" __declspec(dllexport) const char* GetMyBanExpiry() {
 
 extern "C" __declspec(dllexport) const char* GetMatchStats(char* matchID) {
     if (ptrGetMatchStats) return ptrGetMatchStats(matchID);
+    return "{}";
+}
+
+extern "C" __declspec(dllexport) const char* GetValidatorMetrics(char* peerID) {
+    if (ptrGetValidatorMetrics) {
+        return ptrGetValidatorMetrics(peerID);
+    }
     return "{}";
 }
 

@@ -70,20 +70,24 @@ type GameProof struct {
 }
 
 type UserProfile struct {
-	PeerID          string  `json:"peer_id"`
-	SteamID         string  `json:"steam_id"`
-	Username        string  `json:"username"`
-	AvatarURL       string  `json:"avatar_url"`
-	XP              float64 `json:"xp"`
-	Level           int     `json:"level"`
-	Rating          float64 `json:"rating"`
-	AvgRating       float64 `json:"avg_rating"`
-	Matches         int     `json:"matches"`
-	Wins            int     `json:"wins"`
-	Deviation       float64 `json:"deviation"`
-	Volatility      float64 `json:"volatility"`
-	IsPrimeVerified bool    `json:"is_prime_verified"`
-	StakedEDN       float64 `json:"staked_edn"`
+	PeerID              string  `json:"peer_id"`
+	SteamID             string  `json:"steam_id"`
+	Username            string  `json:"username"`
+	AvatarURL           string  `json:"avatar_url"`
+	XP                  float64 `json:"xp"`
+	Level               int     `json:"level"`
+	Rating              float64 `json:"rating"`
+	AvgRating           float64 `json:"avg_rating"`
+	Matches             int     `json:"matches"`
+	Wins                int     `json:"wins"`
+	Deviation           float64 `json:"deviation"`
+	Volatility          float64 `json:"volatility"`
+	IsPrimeVerified     bool    `json:"is_prime_verified"`
+	StakedEDN           float64 `json:"staked_edn"`
+	TribunalDemosParsed int     `json:"tribunal_demos_parsed"`
+	TribunalEDNEarned   float64 `json:"tribunal_edn_earned"`
+	TribunalCorrect     int     `json:"tribunal_correct"`
+	TribunalTotalVotes  int     `json:"tribunal_total_votes"`
 }
 
 type Auction struct {
@@ -168,6 +172,14 @@ type Blockchain struct {
 	PublicKeys     map[string]string
 	TribunalVotes  map[string]map[string]map[string]bool
 	Mutex          sync.RWMutex
+}
+
+type TribunalProposal struct {
+	MatchID     string `json:"match_id"`
+	SuspectID   string `json:"suspect_id"`
+	IsGuilty    bool   `json:"is_guilty"`
+	ValidatorID string `json:"validator_id"`
+	Signature   string `json:"signature"`
 }
 
 var EdenChain *Blockchain
@@ -629,7 +641,6 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				}
 
 				bc.TribunalVotes[matchID][suspectID][tx.Sender] = isGuilty
-				fmt.Printf("[Tribunal] Validator %s voted Guilty=%t for %s in match %s\n", tx.Sender, isGuilty, suspectID, matchID)
 
 				var guiltyWeight, innocentWeight float64
 				for validatorID, vote := range bc.TribunalVotes[matchID][suspectID] {
@@ -652,16 +663,16 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 
 						suspectProfile.Rating = 100.0
 
-						slashedAmount := bc.Balances[suspectID]
 						bc.Balances[suspectID] = 0
 
 						bc.QueueBans[suspectID] = b.Timestamp + 315360000
 
-						bc.Balances["SYSTEM_BURN_ADDRESS"] += slashedAmount
+						bc.ProcessValidatorPayouts(matchID, suspectID, true)
 
 						delete(bc.TribunalVotes[matchID], suspectID)
-					} else if (innocentWeight / totalWeight) > 0.50 {
+					} else if (innocentWeight / totalWeight) > 0.66 {
 						fmt.Printf("[Tribunal] Suspect %s cleared of charges.\n", suspectID)
+						bc.ProcessValidatorPayouts(matchID, suspectID, false)
 						delete(bc.TribunalVotes[matchID], suspectID)
 					}
 				}
@@ -714,6 +725,45 @@ func CalculateAbel2(pRating, pDev, oppRating, oppDev float64, outcome float64) (
 	return finalRating, finalDev
 }
 
+func (bc *Blockchain) ProcessValidatorPayouts(matchID string, suspectID string, consensusWasGuilty bool) {
+	slashPercentage := 0.20
+	var totalSlashedFunds float64
+	var honestValidators []string
+
+	for validatorID, vote := range bc.TribunalVotes[matchID][suspectID] {
+		profile := bc.GetOrInitProfile(validatorID)
+		profile.TribunalTotalVotes++
+		profile.TribunalDemosParsed++
+
+		if vote != consensusWasGuilty {
+			penalty := profile.StakedEDN * slashPercentage
+			profile.StakedEDN -= penalty
+			totalSlashedFunds += penalty
+
+			fmt.Printf("[Tribunal Security] Slashed Validator %s for %f EDN (Voted incorrectly)\n", validatorID, penalty)
+		} else {
+			honestValidators = append(honestValidators, validatorID)
+			profile.TribunalCorrect++
+		}
+	}
+
+	if len(honestValidators) > 0 && totalSlashedFunds > 0 {
+		var totalHonestStake float64
+		for _, vID := range honestValidators {
+			totalHonestStake += bc.GetOrInitProfile(vID).StakedEDN
+		}
+
+		for _, vID := range honestValidators {
+			profile := bc.GetOrInitProfile(vID)
+			shareRatio := profile.StakedEDN / totalHonestStake
+			reward := totalSlashedFunds * shareRatio
+			bc.Balances[vID] += reward
+			profile.TribunalEDNEarned += reward
+			fmt.Printf("[Tribunal Security] Rewarded Honest Validator %s with %f EDN\n", vID, reward)
+		}
+	}
+}
+
 func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winnerTeam string, mvpSteamID string, playerRatings map[string]float64, playerTeams map[string]string) {
 	mvpPeerID := ""
 	if pid, ok := bc.SteamToPeerID[mvpSteamID]; ok {
@@ -722,6 +772,7 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 
 	var ctTotalRating, ctTotalDev, tTotalRating, tTotalDev float64
 	var ctCount, tCount float64
+	session := bc.MatchSessions[matchID]
 
 	for _, peerID := range roster {
 		profile := bc.GetOrInitProfile(peerID)
@@ -784,6 +835,14 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 			fmt.Printf("[XP] Processing Virtual Update: %s\n", string(data))
 		}
 		bc.processMatchProgression(peerID, didWin, rating, oppTeamAvgRating, oppTeamAvgDev)
+
+		if rating > 3.0 {
+			fmt.Printf("[Anti-Cheat] Anomalous rating %.2f detected for %s! Automatically triggering Tribunal...\n", rating, peerID)
+			myProfile := bc.GetOrInitProfile(myPeerID)
+			if myProfile.StakedEDN > 0 {
+				go FetchDemoAndAnalyze(ctx, session.HostID, matchID, peerID)
+			}
+		}
 	}
 }
 
@@ -1355,4 +1414,36 @@ func SignTransaction(privKeyHex string, tx *Transaction) error {
 	copy(sigBytes[64-len(sBytes):64], sBytes)
 	tx.Signature = hex.EncodeToString(sigBytes)
 	return nil
+}
+
+func SubmitTribunalVerdict(matchID string, suspectID string, isGuilty bool) {
+	payload := fmt.Sprintf("%s:%s:%t", matchID, suspectID, isGuilty)
+	hashBytes := sha256.Sum256([]byte(payload))
+
+	privBytes, _ := hex.DecodeString(myPrivKey)
+	privKey, _ := x509.ParseECPrivateKey(privBytes)
+	r, s, _ := ecdsa.Sign(rand.Reader, privKey, hashBytes[:])
+
+	sigBytes := make([]byte, 64)
+	copy(sigBytes[32-len(r.Bytes()):32], r.Bytes())
+	copy(sigBytes[64-len(s.Bytes()):64], s.Bytes())
+	sigHex := hex.EncodeToString(sigBytes)
+
+	proposal := TribunalProposal{
+		MatchID:     matchID,
+		SuspectID:   suspectID,
+		IsGuilty:    isGuilty,
+		ValidatorID: myPeerID,
+		Signature:   sigHex,
+	}
+
+	payloadBytes, _ := json.Marshal(proposal)
+	wrapper := ValidatorMessage{Type: "TRIBUNAL_VERDICT", Payload: payloadBytes}
+	data, _ := json.Marshal(wrapper)
+
+	if validatorTopic != nil {
+		validatorTopic.Publish(ctx, data)
+	}
+
+	fmt.Printf("[Tribunal] Broadcasted signed verdict for suspect %s\n", suspectID)
 }

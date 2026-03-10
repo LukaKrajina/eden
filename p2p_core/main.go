@@ -97,6 +97,7 @@ const (
 	QueueTopicName     = "eden-queue-v1"
 	ProposalTopicName  = "eden-proposals-v1"
 	ValidatorTopicName = "eden-validators-v1"
+	DemoProtocolID     = "/eden/demo/1.0.0"
 )
 
 var (
@@ -267,6 +268,15 @@ type FriendHandshake struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	Message string `json:"message"`
+}
+
+type DemoRequest struct {
+	MatchID string `json:"match_id"`
+}
+
+type DemoResponse struct {
+	Status   string `json:"status"`
+	FileSize int64  `json:"file_size"`
 }
 
 type SyncRequest struct {
@@ -1025,7 +1035,6 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	LoadFriends()
 
 	h.SetStreamHandler(FriendProtocolID, HandleFriendStream)
-
 	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
 		fmt.Println("[P2P] Incoming Game Connection")
 		streamLock.Lock()
@@ -1033,6 +1042,7 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		streamLock.Unlock()
 		go readStreamLoop(s)
 	})
+	h.SetStreamHandler(DemoProtocolID, HandleDemoRequest)
 
 	StartGSIServer()
 
@@ -2264,6 +2274,39 @@ func setupPubSub() {
 					var sig BlockSignature
 					json.Unmarshal(wrapper.Payload, &sig)
 					handleBlockSignature(sig)
+				} else if wrapper.Type == "TRIBUNAL_VERDICT" {
+					var verdict TribunalProposal
+					json.Unmarshal(wrapper.Payload, &verdict)
+					guiltyStr := "0"
+					if verdict.IsGuilty {
+						guiltyStr = "1"
+					}
+
+					tx := Transaction{
+						ID:        fmt.Sprintf("tribunal_%s_%s", verdict.MatchID, verdict.ValidatorID),
+						Type:      TxTypeTribunal,
+						Sender:    verdict.ValidatorID,
+						Receiver:  "CONSENSUS_ENGINE",
+						Amount:    0,
+						Payload:   fmt.Sprintf("%s:%s:%s", verdict.MatchID, verdict.SuspectID, guiltyStr),
+						Timestamp: time.Now().Unix(),
+						Signature: verdict.Signature,
+					}
+					EdenChain.Mutex.RLock()
+					lastIndex := EdenChain.LastBlock.Index
+					prevHash := EdenChain.LastBlock.Hash
+					EdenChain.Mutex.RUnlock()
+
+					newBlock := Block{
+						Index:        lastIndex + 1,
+						Timestamp:    time.Now().Unix(),
+						Transactions: []Transaction{tx},
+						PrevHash:     prevHash,
+					}
+					newBlock.Hash = calculateHash(newBlock)
+					if EdenChain.AddBlock(newBlock) {
+						broadcastBlock(newBlock)
+					}
 				}
 			}
 		}()
@@ -2567,7 +2610,7 @@ func handleBlockProposal(proposal BlockProposal) {
 	fmt.Printf("[Validators] Signed block proposal %s from %s\n", proposal.BlockData.Hash, proposal.ProposerID)
 }
 
-func hadnleBlockSignature(sig BlockSignature) {
+func handleBlockSignature(sig BlockSignature) {
 	sigsMutex.Lock()
 	defer sigsMutex.Unlock()
 
@@ -2601,15 +2644,10 @@ func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID str
 	totalKills := 0
 
 	parser.RegisterEventHandler(func(e events.Kill) {
-		// Find the suspect
-		if e.Killer != nil && e.Killer.Name == suspectPeerID { // Assuming you map peerID to in-game names
+		if e.Killer != nil && e.Killer.Name == suspectPeerID {
 			totalKills++
-
-			// Basic Heuristic Example: Check if view angle changed drastically in 1 tick prior to kill
-			// (You will need to track player state per-tick for advanced aimbot detection)
 			if e.Distance > 20.0 && e.IsHeadshot {
-				// If heuristic fails:
-				// suspiciousSnaps++
+				suspiciousSnaps++
 			}
 		}
 	})
@@ -2818,6 +2856,113 @@ func angleBetween(v1, v2 r3.Vector) float64 {
 	}
 
 	return math.Acos(cosTheta) * (180.0 / math.Pi)
+}
+
+func HandleDemoRequest(s network.Stream) {
+	defer s.Close()
+
+	reqBuf, err := readFrame(s)
+	if err != nil {
+		fmt.Println("[P2P Demo] Failed to read request:", err)
+		return
+	}
+
+	var req DemoRequest
+	json.Unmarshal(reqBuf, &req)
+
+	demoPath := fmt.Sprintf("./replays/%s.dem", req.MatchID)
+
+	file, err := os.Open(demoPath)
+	if err != nil {
+		resp := DemoResponse{Status: "ERROR: File Not Found"}
+		respData, _ := json.Marshal(resp)
+		writeFrame(s, respData)
+		return
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+
+	resp := DemoResponse{
+		Status:   "OK",
+		FileSize: fileInfo.Size(),
+	}
+	respData, _ := json.Marshal(resp)
+	if err := writeFrame(s, respData); err != nil {
+		return
+	}
+
+	fmt.Printf("[P2P Demo] Streaming %s to validator %s...\n", req.MatchID, s.Conn().RemotePeer())
+	_, err = io.Copy(s, file)
+	if err != nil {
+		fmt.Println("[P2P Demo] Error streaming file:", err)
+	} else {
+		fmt.Println("[P2P Demo] Transfer complete.")
+	}
+}
+
+func FetchDemoAndAnalyze(ctx context.Context, hostPeerIDStr string, matchID string, suspectPeerID string) {
+	targetID, err := peer.Decode(hostPeerIDStr)
+	if err != nil {
+		fmt.Println("[Tribunal] Invalid host peer ID")
+		return
+	}
+
+	if h.Network().Connectedness(targetID) != network.Connected {
+		peerInfo, err := kademliaDHT.FindPeer(ctx, targetID)
+		if err == nil {
+			h.Connect(ctx, peerInfo)
+		}
+	}
+
+	s, err := h.NewStream(ctx, targetID, DemoProtocolID)
+	if err != nil {
+		fmt.Println("[Tribunal] Failed to open demo stream:", err)
+		return
+	}
+	defer s.Close()
+
+	req := DemoRequest{MatchID: matchID}
+	reqData, _ := json.Marshal(req)
+	if err := writeFrame(s, reqData); err != nil {
+		fmt.Println("[Tribunal] Failed to send demo request:", err)
+		return
+	}
+
+	respBuf, err := readFrame(s)
+	if err != nil {
+		fmt.Println("[Tribunal] Failed to read demo response:", err)
+		return
+	}
+
+	var resp DemoResponse
+	json.Unmarshal(respBuf, &resp)
+
+	if resp.Status != "OK" {
+		fmt.Printf("[Tribunal] Host rejected demo request: %s\n", resp.Status)
+		return
+	}
+
+	localPath := fmt.Sprintf("./temp_demos/%s.dem", matchID)
+	os.MkdirAll("./temp_demos", os.ModePerm)
+	outFile, err := os.Create(localPath)
+	if err != nil {
+		fmt.Println("[Tribunal] Failed to create local demo file:", err)
+		return
+	}
+	defer outFile.Close()
+
+	fmt.Printf("[Tribunal] Downloading demo for %s (Size: %d bytes)...\n", matchID, resp.FileSize)
+
+	bytesWritten, err := io.CopyN(outFile, s, resp.FileSize)
+	if err != nil && err != io.EOF {
+		fmt.Println("[Tribunal] Error downloading demo bytes:", err)
+		return
+	}
+
+	fmt.Printf("[Tribunal] Demo download complete! Received %d bytes. Starting analysis...\n", bytesWritten)
+
+	go RunAutomatedTribunal(matchID, localPath, suspectPeerID)
 }
 
 //export RegisterMatchCallback
@@ -3082,6 +3227,33 @@ func SubmitDodgePenalty(matchID *C.char, dodgerPeerID *C.char) *C.char {
 		return C.CString("Success: Penalty Broadcasted")
 	}
 	return C.CString("Error: Block Rejected")
+}
+
+//export GetValidatorMetrics
+func GetValidatorMetrics(peerID *C.char) *C.char {
+	pid := C.GoString(peerID)
+	if pid == "" {
+		pid = h.ID().String()
+	}
+
+	EdenChain.Mutex.RLock()
+	profile := EdenChain.GetOrInitProfile(pid)
+	EdenChain.Mutex.RUnlock()
+
+	accuracy := 0.0
+	if profile.TribunalTotalVotes > 0 {
+		accuracy = (float64(profile.TribunalCorrect) / float64(profile.TribunalTotalVotes)) * 100.0
+	}
+
+	metrics := map[string]interface{}{
+		"demos_parsed": profile.TribunalDemosParsed,
+		"edn_earned":   profile.TribunalEDNEarned,
+		"accuracy":     accuracy,
+		"staked_edn":   profile.StakedEDN,
+	}
+
+	data, _ := json.Marshal(metrics)
+	return C.CString(string(data))
 }
 
 //export AutoConnectToPeers

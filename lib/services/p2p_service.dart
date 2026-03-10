@@ -138,6 +138,9 @@ typedef GetMyBanExpiryDart = Pointer<Utf8> Function();
 typedef GetMatchStatsC = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 typedef GetMatchStatsDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 
+typedef GetValidatorMetricsC = Pointer<Utf8> Function(Pointer<Utf8> peerID);
+typedef GetValidatorMetricsDart = Pointer<Utf8> Function(Pointer<Utf8> peerID);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -194,6 +197,7 @@ class P2PService {
   late SubmitDodgePenaltyDart _submitDodgePenalty;
   late GetMyBanExpiryDart _getMyBanExpiry;
   late GetMatchStatsDart _getMatchStats;
+  late GetValidatorMetricsDart _getValidatorMetrics;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
 
@@ -256,6 +260,7 @@ class P2PService {
     _submitDodgePenalty = _lib.lookupFunction<SubmitDodgePenaltyC, SubmitDodgePenaltyDart>('SubmitDodgePenalty');
     _getMyBanExpiry = _lib.lookupFunction<GetMyBanExpiryC, GetMyBanExpiryDart>('GetMyBanExpiry');
     _getMatchStats = _lib.lookupFunction<GetMatchStatsC, GetMatchStatsDart>('GetMatchStats');
+    _getValidatorMetrics = _lib.lookupFunction<GetValidatorMetricsC, GetValidatorMetricsDart>('GetValidatorMetrics');
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -710,6 +715,21 @@ class P2PService {
       final jsonStr = _consumeNativeString(_getMatchStats(ptr));
       return jsonDecode(jsonStr);
     } catch (e) {
+      return {};
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  Future<Map<String, dynamic>> getValidatorMetrics(String peerID) async {
+    if (!_isInitialized) return {};
+    
+    final ptr = peerID.toNativeUtf8();
+    try {
+      final jsonStr = _consumeNativeString(_getValidatorMetrics(ptr));
+      return jsonDecode(jsonStr);
+    } catch (e) {
+      print("[P2P] Failed to parse validator metrics: $e");
       return {};
     } finally {
       calloc.free(ptr);
