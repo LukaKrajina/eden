@@ -419,7 +419,10 @@ class P2PService {
 
   Future<String> submitMatchReward(int duration, int playerCount) async {
     if (!_isInitialized) return "Error: Engine Offline";
-    return _consumeNativeString(_mineBlock(duration, playerCount));
+
+    return await Isolate.run((){
+      return _consumeNativeString(_mineBlock(duration, playerCount));
+    });
   }
 
   Future<double> getBalance(String address) async {

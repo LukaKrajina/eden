@@ -22,8 +22,15 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/libp2p/go-libp2p-pubsub v0.15.0 // indirect
+	github.com/markus-wa/go-unassert v0.1.3 // indirect
+	github.com/markus-wa/gobitread v0.2.4 // indirect
+	github.com/markus-wa/godispatch v1.4.1 // indirect
+	github.com/markus-wa/ice-cipher-go v0.0.0-20230901094113-348096939ba7 // indirect
+	github.com/markus-wa/quickhull-go/v2 v2.2.0 // indirect
+	github.com/oklog/ulid/v2 v2.1.0 // indirect
 	github.com/oschwald/geoip2-golang v1.13.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
 	github.com/supranational/blst v0.3.16-0.20250831170142-f48500c1fdbe // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
@@ -43,6 +50,7 @@ require (
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/golang/geo v0.0.0-20260302211937-87f5a40ea07a
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -69,6 +77,7 @@ require (
 	github.com/libp2p/go-netroute v0.4.0 // indirect
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.1 // indirect
+	github.com/markus-wa/demoinfocs-golang/v4 v4.5.1
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.68 // indirect

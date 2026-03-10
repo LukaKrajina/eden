@@ -44,6 +44,8 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -52,6 +54,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -61,6 +64,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/golang/geo/r3"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -71,6 +75,9 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	demoinfocs "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs"
+	"github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
+	events "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/events"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -80,15 +87,16 @@ var SteamAPIKey = os.Getenv("STEAM_API_KEY")
 const GSI_PORT = "127.0.0.1:3000"
 const MaxPayloadSize = 2048
 const (
-	FrameGame         = 0x01
-	FrameHeartbeat    = 0x02
-	ProtocolID        = "/eden-cs2/1.0.0"
-	SyncProtocolID    = "/eden/sync/1.0.0"
-	FriendProtocolID  = "/eden/friend/1.0.0"
-	FriendsDBFile     = "friends.json"
-	TopicName         = "eden-consensus-v1"
-	QueueTopicName    = "eden-queue-v1"
-	ProposalTopicName = "eden-proposals-v1"
+	FrameGame          = 0x01
+	FrameHeartbeat     = 0x02
+	ProtocolID         = "/eden-cs2/1.0.0"
+	SyncProtocolID     = "/eden/sync/1.0.0"
+	FriendProtocolID   = "/eden/friend/1.0.0"
+	FriendsDBFile      = "friends.json"
+	TopicName          = "eden-consensus-v1"
+	QueueTopicName     = "eden-queue-v1"
+	ProposalTopicName  = "eden-proposals-v1"
+	ValidatorTopicName = "eden-validators-v1"
 )
 
 var (
@@ -107,6 +115,7 @@ var (
 	queueTopic        *pubsub.Topic
 	proposalTopic     *pubsub.Topic
 	vetoTopic         *pubsub.Topic
+	validatorTopic    *pubsub.Topic
 	inQueue           bool
 	myCurrentTicket   string
 	bestProposal      LobbyProposal
@@ -115,12 +124,15 @@ var (
 	networkMatches    = make(map[string]MatchAnnouncement)
 	activeTickets     = make(map[string]MatchmakingTicket)
 	matchVetoes       = make(map[string][]string)
+	pendingBlockSigs  = make(map[string]map[string]string)
+	recentAngles      = make(map[uint64][]PlayerState)
 	streamLock        sync.Mutex
 	queueMutex        sync.RWMutex
 	proposalMutex     sync.Mutex
 	vetoMutex         sync.RWMutex
 	readyMutex        sync.RWMutex
 	matchesMutex      sync.RWMutex
+	sigsMutex         sync.Mutex
 
 	matchLive  bool   = false
 	ctTeamName string = "CT Team"
@@ -181,6 +193,11 @@ type GSIState struct {
 	} `json:"player"`
 }
 
+type PlayerState struct {
+	ViewDirection r3.Vector
+	Tick          int
+}
+
 type MatchmakingTicket struct {
 	TicketID     string   `json:"ticket_id"`
 	LeaderID     string   `json:"leader_id"`
@@ -197,6 +214,22 @@ type LobbyProposal struct {
 	Players    []string `json:"players"`
 	AverageElo float64  `json:"average_elo"`
 	Timestamp  int64    `json:"timestamp"`
+}
+
+type BlockProposal struct {
+	ProposerID string `json:"proposer_id"`
+	BlockData  Block  `json:"block_data"`
+}
+
+type BlockSignature struct {
+	ValidatorID string `json:"validator_id"`
+	BlockHash   string `json:"block_hash"`
+	Signature   string `json:"signature"`
+}
+
+type ValidatorMessage struct {
+	Type    string `json:"type"`
+	Payload []byte `json:"payload"`
 }
 
 type VetoBroadcast struct {
@@ -2205,6 +2238,37 @@ func setupPubSub() {
 		}
 	}()
 
+	validatorTopic, err = pubSub.Join(ValidatorTopicName)
+	if err == nil {
+		valSub, _ := validatorTopic.Subscribe()
+		go func() {
+			for {
+				msg, err := valSub.Next(ctx)
+				if err != nil {
+					return
+				}
+				if msg.ReceivedFrom == h.ID() {
+					continue
+				}
+
+				var wrapper ValidatorMessage
+				if err := json.Unmarshal(msg.Data, &wrapper); err != nil {
+					continue
+				}
+
+				if wrapper.Type == "PROPOSAL" {
+					var proposal BlockProposal
+					json.Unmarshal(wrapper.Payload, &proposal)
+					go handleBlockProposal(proposal)
+				} else if wrapper.Type == "SIGNATURE" {
+					var sig BlockSignature
+					json.Unmarshal(wrapper.Payload, &sig)
+					handleBlockSignature(sig)
+				}
+			}
+		}()
+	}
+
 	matchFeedTopic, _ = pubSub.Join("eden-matches")
 	matchSub, _ := matchFeedTopic.Subscribe()
 	go func() {
@@ -2457,6 +2521,303 @@ func HandleLobbyProposal(proposal LobbyProposal) {
 			LockInLobby()
 		})
 	}
+}
+
+func handleBlockProposal(proposal BlockProposal) {
+	EdenChain.Mutex.RLock()
+	myProfile := EdenChain.GetOrInitProfile(myPeerID)
+	lastHast := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	if myProfile.StakedEDN <= 0 {
+		return
+	}
+
+	if proposal.BlockData.PrevHash != lastHast {
+		fmt.Printf("[Validators] Rejecting proposal from %s: Out of sync.\n", proposal.ProposerID)
+		return
+	}
+
+	hashBytes, _ := hex.DecodeString(proposal.BlockData.Hash)
+	privBytes, _ := hex.DecodeString(myPrivKey)
+	privKey, _ := x509.ParseECPrivateKey(privBytes)
+	r, s, _ := ecdsa.Sign(rand.Reader, privKey, hashBytes)
+
+	sigBytes := make([]byte, 64)
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+	copy(sigBytes[32-len(rBytes):32], rBytes)
+	copy(sigBytes[64-len(sBytes):64], sBytes)
+	sigHex := hex.EncodeToString(sigBytes)
+
+	sigMsg := BlockSignature{
+		ValidatorID: myPeerID,
+		BlockHash:   proposal.BlockData.Hash,
+		Signature:   sigHex,
+	}
+
+	payload, _ := json.Marshal(sigMsg)
+	wrapper := ValidatorMessage{Type: "SIGNATURE", Payload: payload}
+	data, _ := json.Marshal(wrapper)
+
+	if validatorTopic != nil {
+		validatorTopic.Publish(ctx, data)
+	}
+
+	fmt.Printf("[Validators] Signed block proposal %s from %s\n", proposal.BlockData.Hash, proposal.ProposerID)
+}
+
+func hadnleBlockSignature(sig BlockSignature) {
+	sigsMutex.Lock()
+	defer sigsMutex.Unlock()
+
+	if pendingBlockSigs[sig.BlockHash] == nil {
+		pendingBlockSigs[sig.BlockHash] = make(map[string]string)
+	}
+
+	pendingBlockSigs[sig.BlockHash][sig.ValidatorID] = sig.Signature
+}
+
+func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID string) {
+	EdenChain.Mutex.RLock()
+	myProfile := EdenChain.GetOrInitProfile(myPeerID)
+	EdenChain.Mutex.RUnlock()
+
+	if myProfile.StakedEDN <= 0 {
+		return
+	}
+
+	f, err := os.Open(demoFilePath)
+	if err != nil {
+		fmt.Println("[Tribunal] Failed to open demo file:", err)
+		return
+	}
+	defer f.Close()
+
+	parser := demoinfocs.NewParser(f)
+	defer parser.Close()
+
+	suspiciousSnaps := 0
+	totalKills := 0
+
+	parser.RegisterEventHandler(func(e events.Kill) {
+		// Find the suspect
+		if e.Killer != nil && e.Killer.Name == suspectPeerID { // Assuming you map peerID to in-game names
+			totalKills++
+
+			// Basic Heuristic Example: Check if view angle changed drastically in 1 tick prior to kill
+			// (You will need to track player state per-tick for advanced aimbot detection)
+			if e.Distance > 20.0 && e.IsHeadshot {
+				// If heuristic fails:
+				// suspiciousSnaps++
+			}
+		}
+	})
+
+	err = parser.ParseToEnd()
+	if err != nil {
+		fmt.Println("[Tribunal] Demo parsing failed:", err)
+		return
+	}
+
+	isGuilty := false
+	if totalKills > 0 && float64(suspiciousSnaps)/float64(totalKills) > 0.40 {
+		isGuilty = true
+	}
+
+	SubmitTribunalVerdict(matchID, suspectPeerID, isGuilty)
+}
+
+func SubmitTribunalVerdict(matchID string, suspectID string, isGuilty bool) {
+	guiltyStr := "0"
+	if isGuilty {
+		guiltyStr = "1"
+	}
+
+	payload := fmt.Sprintf("%s:%s:%s", matchID, suspectID, guiltyStr)
+
+	pubKeyBytes, _ := hex.DecodeString(myPubKey)
+
+	tx := Transaction{
+		ID:        fmt.Sprintf("tribunal_%d", time.Now().UnixNano()),
+		Type:      TxTypeTribunal, //
+		Sender:    h.ID().String(),
+		Receiver:  "CONSENSUS_ENGINE",
+		Amount:    0,
+		Payload:   payload,
+		Timestamp: time.Now().Unix(),
+		PublicKey: pubKeyBytes,
+		Nonce:     GetNextNonce(h.ID().String()),
+	}
+
+	SignTransaction(myPrivKey, &tx)
+
+	EdenChain.Mutex.RLock()
+	lastIndex := EdenChain.LastBlock.Index
+	prevHash := EdenChain.LastBlock.Hash
+	EdenChain.Mutex.RUnlock()
+
+	newBlock := Block{
+		Index:        lastIndex + 1,
+		Timestamp:    time.Now().Unix(),
+		Transactions: []Transaction{tx},
+		PrevHash:     prevHash,
+	}
+	newBlock.Hash = calculateHash(newBlock)
+
+	if EdenChain.AddBlock(newBlock) {
+		broadcastBlock(newBlock)
+		fmt.Println("[Tribunal] Verdict submitted to the blockchain successfully.")
+	}
+}
+
+func DetectSnaps(parser demoinfocs.Parser, suspectSteamID64 uint64) int {
+	confirmedSuspiciousSnaps := 0
+	suspiciousShotsFired := make(map[int]bool)
+
+	parser.RegisterEventHandler(func(e events.FrameDone) {
+		for _, p := range parser.GameState().Participants().Playing() {
+			if p != nil && p.SteamID64 == suspectSteamID64 {
+				vec := angleToVector(p.ViewDirectionX(), p.ViewDirectionY())
+
+				state := PlayerState{
+					ViewDirection: vec,
+					Tick:          parser.GameState().IngameTick(),
+				}
+
+				recentAngles[p.SteamID64] = append(recentAngles[p.SteamID64], state)
+				if len(recentAngles[p.SteamID64]) > 10 {
+					recentAngles[p.SteamID64] = recentAngles[p.SteamID64][1:]
+				}
+			}
+		}
+	})
+
+	parser.RegisterEventHandler(func(e events.WeaponFire) {
+		if e.Shooter != nil && e.Shooter.SteamID64 == suspectSteamID64 {
+			history := recentAngles[suspectSteamID64]
+			if len(history) < 2 {
+				return
+			}
+
+			pastState := history[0]
+			currentState := history[len(history)-1]
+
+			angleDelta := angleBetween(pastState.ViewDirection, currentState.ViewDirection)
+
+			if angleDelta > 25.0 {
+				currentTick := parser.GameState().IngameTick()
+				suspiciousShotsFired[currentTick] = true
+			}
+		}
+	})
+
+	parser.RegisterEventHandler(func(e events.PlayerHurt) {
+		if e.Attacker != nil && e.Attacker.SteamID64 == suspectSteamID64 {
+			currentTick := parser.GameState().IngameTick()
+
+			for i := 0; i <= 3; i++ {
+				checkTick := currentTick - i
+				if suspiciousShotsFired[checkTick] {
+					confirmedSuspiciousSnaps++
+					delete(suspiciousShotsFired, checkTick)
+					break
+				}
+			}
+		}
+	})
+
+	return confirmedSuspiciousSnaps
+}
+
+func DetectWallTracing(parser demoinfocs.Parser, suspectSteamID64 uint64) int {
+	traceFlags := 0
+	suspectTraceDuration := make(map[uint64]int)
+
+	parser.RegisterEventHandler(func(e events.FrameDone) {
+		gameState := parser.GameState()
+
+		var suspect *common.Player
+
+		for _, p := range gameState.Participants().Playing() {
+			if p.SteamID64 == suspectSteamID64 {
+				suspect = p
+				break
+			}
+		}
+
+		if suspect == nil || !suspect.IsAlive() {
+			return
+		}
+
+		suspectPos := suspect.Position()
+		suspectView := angleToVector(suspect.ViewDirectionX(), suspect.ViewDirectionY())
+
+		for _, enemy := range gameState.Participants().Playing() {
+			if enemy == nil || !enemy.IsAlive() || enemy.Team == suspect.Team || enemy.SteamID64 == suspectSteamID64 {
+				continue
+			}
+
+			if enemy.IsUnknown {
+				suspectTraceDuration[enemy.SteamID64] = 0
+				continue
+			}
+
+			if suspect.HasSpotted(enemy) {
+				suspectTraceDuration[enemy.SteamID64] = 0
+				continue
+			}
+			enemyPos := enemy.Position()
+			targetVector := r3.Vector{
+				X: enemyPos.X - suspectPos.X,
+				Y: enemyPos.Y - suspectPos.Y,
+				Z: (enemyPos.Z + 60.0) - suspectPos.Z,
+			}
+
+			angle := angleBetween(suspectView, targetVector)
+			if angle < 2.5 {
+				suspectTraceDuration[enemy.SteamID64]++
+				if suspectTraceDuration[enemy.SteamID64] > 32 {
+					traceFlags++
+					suspectTraceDuration[enemy.SteamID64] = 0
+				}
+			} else {
+				suspectTraceDuration[enemy.SteamID64] = 0
+			}
+		}
+	})
+
+	return traceFlags
+}
+
+func angleToVector(pitch, yaw float32) r3.Vector {
+	pitchRad := float64(pitch) * (math.Pi / 180.0)
+	yawRad := float64(yaw) * (math.Pi / 180.0)
+
+	return r3.Vector{
+		X: math.Cos(pitchRad) * math.Cos(yawRad),
+		Y: math.Sin(yawRad) * math.Cos(pitchRad),
+		Z: -math.Sin(pitchRad),
+	}
+}
+
+func angleBetween(v1, v2 r3.Vector) float64 {
+	dot := v1.Dot(v2)
+	mag1 := v1.Norm()
+	mag2 := v2.Norm()
+
+	if mag1 == 0 || mag2 == 0 {
+		return 0
+	}
+
+	cosTheta := dot / (mag1 * mag2)
+	if cosTheta > 1.0 {
+		cosTheta = 1.0
+	} else if cosTheta < -1.0 {
+		cosTheta = -1.0
+	}
+
+	return math.Acos(cosTheta) * (180.0 / math.Pi)
 }
 
 //export RegisterMatchCallback

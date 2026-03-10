@@ -151,6 +151,8 @@ type Block struct {
 }
 
 type Blockchain struct {
+	Database       *leveldb.DB
+	DBPath         string
 	LastBlock      Block
 	Balances       map[string]float64
 	Profiles       map[string]*UserProfile
@@ -162,10 +164,9 @@ type Blockchain struct {
 	MatchSessions  map[string]MatchSessionInfo
 	MatchVotes     map[string]map[string]string `json:"match_votes"`
 	QueueBans      map[string]int64             `json:"queue_bans"`
-	Database       *leveldb.DB
-	DBPath         string
-	FriendRegistry map[string]string `json:"friend_registry"`
+	FriendRegistry map[string]string            `json:"friend_registry"`
 	PublicKeys     map[string]string
+	TribunalVotes  map[string]map[string]map[string]bool
 	Mutex          sync.RWMutex
 }
 
@@ -612,6 +613,59 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 			profile := bc.GetOrInitProfile(tx.Sender)
 			profile.StakedEDN += tx.Amount
 			fmt.Printf("[Staking] %s staked %.2f EDN to become a Validator.\n", tx.Sender, tx.Amount)
+
+		case TxTypeTribunal:
+			parts := strings.Split(tx.Payload, ":")
+			if len(parts) >= 3 {
+				matchID := parts[0]
+				suspectID := parts[1]
+				isGuilty := parts[2] == "1"
+
+				if bc.TribunalVotes[matchID] == nil {
+					bc.TribunalVotes[matchID] = make(map[string]map[string]bool)
+				}
+				if bc.TribunalVotes[matchID][suspectID] == nil {
+					bc.TribunalVotes[matchID][suspectID] = make(map[string]bool)
+				}
+
+				bc.TribunalVotes[matchID][suspectID][tx.Sender] = isGuilty
+				fmt.Printf("[Tribunal] Validator %s voted Guilty=%t for %s in match %s\n", tx.Sender, isGuilty, suspectID, matchID)
+
+				var guiltyWeight, innocentWeight float64
+				for validatorID, vote := range bc.TribunalVotes[matchID][suspectID] {
+					profile := bc.GetOrInitProfile(validatorID)
+					stake := profile.StakedEDN
+					if vote {
+						guiltyWeight += stake
+					} else {
+						innocentWeight += stake
+					}
+				}
+
+				totalWeight := guiltyWeight + innocentWeight
+
+				if totalWeight >= 1000.0 {
+					if (guiltyWeight / totalWeight) > 0.66 {
+						fmt.Printf("[Tribunal] CONSENSUS REACHED. Slashing %s!\n", suspectID)
+
+						suspectProfile := bc.GetOrInitProfile(suspectID)
+
+						suspectProfile.Rating = 100.0
+
+						slashedAmount := bc.Balances[suspectID]
+						bc.Balances[suspectID] = 0
+
+						bc.QueueBans[suspectID] = b.Timestamp + 315360000
+
+						bc.Balances["SYSTEM_BURN_ADDRESS"] += slashedAmount
+
+						delete(bc.TribunalVotes[matchID], suspectID)
+					} else if (innocentWeight / totalWeight) > 0.50 {
+						fmt.Printf("[Tribunal] Suspect %s cleared of charges.\n", suspectID)
+						delete(bc.TribunalVotes[matchID], suspectID)
+					}
+				}
+			}
 
 		case TxTypeSteamPrime:
 			if tx.Sender == "SYSTEM_ORACLE" {
@@ -1131,7 +1185,35 @@ func (bc *Blockchain) CreateGameBlock(proof GameProof, minerID string) Block {
 	}
 
 	newBlock.Hash = calculateHash(newBlock)
-	newBlock.ChainWeight = lastBlock.ChainWeight + bc.CalculateValidatorWeight(newBlock.Hash, newBlock.ValidatorSigs)
+	proposal := BlockProposal{
+		ProposerID: minerID,
+		BlockData:  newBlock,
+	}
+
+	payload, _ := json.Marshal(proposal)
+	wrapper := ValidatorMessage{Type: "PROPOSAL", Payload: payload}
+	data, _ := json.Marshal(wrapper)
+
+	if validatorTopic != nil {
+		validatorTopic.Publish(ctx, data)
+	}
+
+	fmt.Printf("[Consensus] Proposed block %s. Waiting 3 seconds for validator signatures...\n", newBlock.Hash)
+
+	time.Sleep(3 * time.Second)
+
+	sigsMutex.Lock()
+	collectedSigs := pendingBlockSigs[newBlock.Hash]
+	delete(pendingBlockSigs, newBlock.Hash)
+	sigsMutex.Unlock()
+
+	if collectedSigs != nil {
+		newBlock.ValidatorSigs = collectedSigs
+	}
+
+	weightToAdd := bc.CalculateValidatorWeight(newBlock.Hash, newBlock.ValidatorSigs)
+	newBlock.ChainWeight = lastBlock.ChainWeight + weightToAdd
+	fmt.Printf("[Consensus] Finalized block %s with %d signatures. Total Weight: %.2f\n", newBlock.Hash, len(newBlock.ValidatorSigs), newBlock.ChainWeight)
 
 	if bc.AddBlock(newBlock) {
 		return newBlock
