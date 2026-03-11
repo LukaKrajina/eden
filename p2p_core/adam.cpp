@@ -338,7 +338,7 @@ extern "C" __declspec(dllexport) const char* GetAuthToken() {
 }
 
 extern "C" __declspec(dllexport) const char* GetIPForPeer(const char* peerID) {
-    static std::string cache;
+    thread_local std::string cache;
     char* res = ptrGetIPForPeer(peerID);
     cache = res;
     ptrFreeString(res);
