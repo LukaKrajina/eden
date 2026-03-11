@@ -121,12 +121,6 @@ var (
 	myCurrentTicket   string
 	bestProposal      LobbyProposal
 	proposalTimer     *time.Timer
-	matchReadyStates  = make(map[string]map[string]bool)
-	networkMatches    = make(map[string]MatchAnnouncement)
-	activeTickets     = make(map[string]MatchmakingTicket)
-	matchVetoes       = make(map[string][]string)
-	pendingBlockSigs  = make(map[string]map[string]string)
-	recentAngles      = make(map[uint64][]PlayerState)
 	streamLock        sync.Mutex
 	queueMutex        sync.RWMutex
 	proposalMutex     sync.Mutex
@@ -135,9 +129,16 @@ var (
 	matchesMutex      sync.RWMutex
 	sigsMutex         sync.Mutex
 
-	matchLive  bool   = false
-	ctTeamName string = "CT Team"
-	tTeamName  string = "T Team"
+	matchLive        bool   = false
+	ctTeamName       string = "CT Team"
+	tTeamName        string = "T Team"
+	vpnEgressQueue          = make(chan []byte, 4096)
+	matchReadyStates        = make(map[string]map[string]bool)
+	networkMatches          = make(map[string]MatchAnnouncement)
+	activeTickets           = make(map[string]MatchmakingTicket)
+	matchVetoes             = make(map[string][]string)
+	pendingBlockSigs        = make(map[string]map[string]string)
+	recentAngles            = make(map[uint64][]PlayerState)
 
 	bufferPool = sync.Pool{
 		New: func() interface{} {
@@ -354,6 +355,7 @@ type MatchAnnouncement struct {
 }
 
 var activeStreams = make(map[peer.ID]network.Stream)
+var routingTable = make(map[string]network.Stream)
 var rendezvousString string
 var MyFriends = make(map[string]FriendInfo)
 var friendMutex sync.RWMutex
@@ -472,6 +474,45 @@ func getMachineToken() string {
 	rawString := strings.Join(data, "|")
 	hash := sha256.Sum256([]byte(rawString))
 	return hex.EncodeToString(hash[:16])
+}
+
+func StartVPNEgressWorker() {
+	go func() {
+		for frame := range vpnEgressQueue {
+			if len(frame) < 27 {
+				continue
+			}
+
+			destIP := net.IPv4(frame[7+16], frame[7+17], frame[7+18], frame[7+19]).String()
+
+			streamLock.Lock()
+			targetStream, isUnicast := routingTable[destIP]
+
+			if isUnicast {
+				targetStream.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
+				_, err := targetStream.Write(frame)
+				if err != nil {
+					targetStream.SetWriteDeadline(time.Time{})
+				}
+				streamLock.Unlock()
+
+			} else if destIP == "255.255.255.255" || strings.HasSuffix(destIP, ".255") {
+				streamsCopy := make([]network.Stream, 0, len(activeStreams))
+				for _, s := range activeStreams {
+					streamsCopy = append(streamsCopy, s)
+				}
+				streamLock.Unlock()
+
+				for _, s := range streamsCopy {
+					s.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
+					s.Write(frame)
+					s.SetWriteDeadline(time.Time{})
+				}
+			} else {
+				streamLock.Unlock()
+			}
+		}
+	}()
 }
 
 func StartGSIServer() {
@@ -1030,10 +1071,13 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 		fmt.Println("[P2P] Incoming Game Connection")
 		streamLock.Lock()
 		activeStreams[s.Conn().RemotePeer()] = s
+		routingTable[getIPFromPeerID(s.Conn().RemotePeer().String())] = s
 		streamLock.Unlock()
 		go readStreamLoop(s)
 	})
 	h.SetStreamHandler(DemoProtocolID, HandleDemoRequest)
+
+	StartVPNEgressWorker()
 
 	StartGSIServer()
 
@@ -2062,6 +2106,15 @@ func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 
 	cData := unsafe.Slice((*byte)(data), payloadLen)
 	copy(frame[7:], cData)
+
+	select {
+	case vpnEgressQueue <- frame:
+
+	default:
+		netStats.Lock()
+		netStats.PacketsLost++
+		netStats.Unlock()
+	}
 
 	for _, s := range streams {
 		s.Write(frame)
@@ -3250,6 +3303,7 @@ func AutoConnectToPeers(targetMode *C.char, targetMap *C.char) *C.char {
 			if err == nil {
 				streamLock.Lock()
 				activeStreams[p.ID] = s
+				routingTable[getIPFromPeerID(p.ID.String())] = s
 				streamLock.Unlock()
 				go readStreamLoop(s)
 				return C.CString(p.ID.String())
@@ -3281,6 +3335,7 @@ func ConnectToPeer(peerID *C.char) {
 		if err == nil {
 			streamLock.Lock()
 			activeStreams[targetID] = s
+			routingTable[getIPFromPeerID(targetID.String())] = s
 			streamLock.Unlock()
 			go readStreamLoop(s)
 			fmt.Printf("[P2P] Successfully connected and opened stream to %s\n", pIDStr)
