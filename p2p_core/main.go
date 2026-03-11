@@ -2134,6 +2134,18 @@ func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 
 func readStreamLoop(s network.Stream) {
 	defer s.Close()
+	defer func() {
+		remotePeer := s.Conn().RemotePeer()
+		destIP := getIPFromPeerID(remotePeer.String())
+
+		streamLock.Lock()
+		delete(activeStreams, remotePeer)
+		delete(routingTable, destIP)
+		streamLock.Unlock()
+
+		fmt.Sprint("[P2P] Connection lost to %s, cleaned up routing tables.\n", remotePeer.String())
+	}()
+
 	header := make([]byte, 7)
 
 	for {
