@@ -58,6 +58,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -2883,7 +2884,8 @@ func HandleDemoRequest(s network.Stream) {
 	var req DemoRequest
 	json.Unmarshal(reqBuf, &req)
 
-	demoPath := fmt.Sprintf("./replays/%s.dem", req.MatchID)
+	safeMatchID := filepath.Base(req.MatchID)
+	demoPath := filepath.Join(".", "replays", fmt.Sprintf("%s.dem", safeMatchID))
 
 	file, err := os.Open(demoPath)
 	if err != nil {
