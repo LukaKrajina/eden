@@ -520,15 +520,6 @@ func StartGSIServer() {
 				fmt.Println("[Match] New Session Initialized")
 			}
 
-			if activeSession == nil || activeSession.MatchID != currentMatchID {
-				activeSession = &LiveMatchSession{
-					MatchID:     currentMatchID,
-					SteamRoster: make(map[string]string),
-					Scores:      make(map[string]int),
-				}
-				fmt.Println("[Match] New Session Initialized")
-			}
-
 			if allPlayers, ok := rawData["allplayers"].(map[string]interface{}); ok {
 				var topCTScore = -1
 				var topTScore = -1
@@ -2664,49 +2655,6 @@ func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID str
 	}
 
 	SubmitTribunalVerdict(matchID, suspectPeerID, isGuilty)
-}
-
-func SubmitTribunalVerdict(matchID string, suspectID string, isGuilty bool) {
-	guiltyStr := "0"
-	if isGuilty {
-		guiltyStr = "1"
-	}
-
-	payload := fmt.Sprintf("%s:%s:%s", matchID, suspectID, guiltyStr)
-
-	pubKeyBytes, _ := hex.DecodeString(myPubKey)
-
-	tx := Transaction{
-		ID:        fmt.Sprintf("tribunal_%d", time.Now().UnixNano()),
-		Type:      TxTypeTribunal, //
-		Sender:    h.ID().String(),
-		Receiver:  "CONSENSUS_ENGINE",
-		Amount:    0,
-		Payload:   payload,
-		Timestamp: time.Now().Unix(),
-		PublicKey: pubKeyBytes,
-		Nonce:     GetNextNonce(h.ID().String()),
-	}
-
-	SignTransaction(myPrivKey, &tx)
-
-	EdenChain.Mutex.RLock()
-	lastIndex := EdenChain.LastBlock.Index
-	prevHash := EdenChain.LastBlock.Hash
-	EdenChain.Mutex.RUnlock()
-
-	newBlock := Block{
-		Index:        lastIndex + 1,
-		Timestamp:    time.Now().Unix(),
-		Transactions: []Transaction{tx},
-		PrevHash:     prevHash,
-	}
-	newBlock.Hash = calculateHash(newBlock)
-
-	if EdenChain.AddBlock(newBlock) {
-		broadcastBlock(newBlock)
-		fmt.Println("[Tribunal] Verdict submitted to the blockchain successfully.")
-	}
 }
 
 func DetectSnaps(parser demoinfocs.Parser, suspectSteamID64 uint64) int {

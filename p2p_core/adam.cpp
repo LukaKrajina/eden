@@ -44,7 +44,7 @@ typedef char* (*StartEdenNodeFunc)(const char* virtualIP);
 typedef void (*ConnectToPeerFunc)(const char* peerID);
 typedef char* (*GetIPForPeerFunc)(const char* peerID);
 typedef char* (*GetMatchPasswordFunc)(char* matchID);
-typedef char* (*StartMatchFunc)(char* matchID, char* playerList);
+typedef char* (*StartMatchFunc)(char* matchID, char* playerList, char* password);
 typedef char* (*AbortMatchFunc)(char* matchID);
 typedef char* (*GetWalletPubKeyFunc)();
 typedef void (*StopNodeFunc)();
@@ -250,7 +250,7 @@ bool LoadGoDLL() {
     ptrSubmitDodgePenalty = (SubmitDodgePenaltyFunc)GetProcAddress(hGo, "SubmitDodgePenalty");
     ptrGetMyBanExpiry = (GetMyBanExpiryFunc)GetProcAddress(hGo, "GetMyBanExpiry");
     ptrGetMatchStats = (GetMatchStatsFunc)GetProcAddress(hGo, "GetMatchStats");
-    ptrGetValidatorMetrics = (GetValidatorMetricsFunc)GetProcAddress(hGo, "GetValidatorMetrics")
+    ptrGetValidatorMetrics = (GetValidatorMetricsFunc)GetProcAddress(hGo, "GetValidatorMetrics");
 
     if (ptrInitBridge) {
         ptrInitBridge(InjectVPNPacket);
@@ -485,8 +485,8 @@ extern "C" __declspec(dllexport) const char* GetSteamInventory(char* steamID) {
     return "[]";
 }
 
-extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, char* playerList) {
-    if (ptrStartMatch) return ptrStartMatch(matchID, playerList);
+extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, char* playerList, char* password) {
+    if (ptrStartMatch) return ptrStartMatch(matchID, playerList, password);
     return "Error: DLL Func Missing";
 }
 
