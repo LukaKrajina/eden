@@ -4,6 +4,7 @@ import 'dart:convert'; // Added for JSON
 import 'package:eden/misc/mod_config_mapper.dart';
 import 'package:eden/widget/match_ready_room.dart';
 import 'package:eden/widget/match_roster_dialog.dart';
+import 'package:eden/widget/validator_dashboard.dart';
 import 'package:eden/widget/vote_room.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1076,6 +1077,8 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
         return _buildStatsView();
       case 4:
         return _buildShopView();
+      case 5:
+        return ValidatorDashboard(myPeerID: _myPeerID, p2pService: widget.p2pService);
       default:
         return Container();
     }
@@ -1117,6 +1120,7 @@ class _ServerControlPanelState extends State<ServerControlPanel> {
             _fetchMatches();
           }),
           _buildSideIcon(Icons.gavel, _currentView == 4, onTap: () => setState(() => _currentView = 4)), 
+          _buildSideIcon(Icons.security, _currentView == 5, onTap: () => setState(() => _currentView = 5)),
           const Spacer(),
           const Spacer(),
           _buildSideIcon(Icons.settings, false, onTap: _showSettingsWindow),
