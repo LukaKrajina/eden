@@ -60,6 +60,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2681,9 +2682,16 @@ func handleBlockSignature(sig BlockSignature) {
 func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID string) {
 	EdenChain.Mutex.RLock()
 	myProfile := EdenChain.GetOrInitProfile(myPeerID)
+	suspectProfile := EdenChain.GetOrInitProfile(suspectPeerID)
 	EdenChain.Mutex.RUnlock()
 
 	if myProfile.StakedEDN <= 0 {
+		return
+	}
+
+	suspectSteamID64, err := strconv.ParseUint(suspectProfile.SteamID, 10, 64)
+	if err != nil {
+		fmt.Println("[Tribunal] Invalid SteamID for suspect:", err)
 		return
 	}
 
@@ -2697,8 +2705,10 @@ func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID str
 	parser := demoinfocs.NewParser(f)
 	defer parser.Close()
 
-	suspiciousSnaps := 0
-	totalKills := 0
+	var suspiciousSnaps, totalKills int
+	var snapCount, traceCount int
+	suspiciousSnaps = 0
+	totalKills = 0
 
 	parser.RegisterEventHandler(func(e events.Kill) {
 		if e.Killer != nil && e.Killer.Name == suspectPeerID {
@@ -2709,6 +2719,9 @@ func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID str
 		}
 	})
 
+	snapCount = DetectSnaps(parser, suspectSteamID64)
+	traceCount = DetectWallTracing(parser, suspectSteamID64)
+
 	err = parser.ParseToEnd()
 	if err != nil {
 		fmt.Println("[Tribunal] Demo parsing failed:", err)
@@ -2717,6 +2730,10 @@ func RunAutomatedTribunal(matchID string, demoFilePath string, suspectPeerID str
 
 	isGuilty := false
 	if totalKills > 0 && float64(suspiciousSnaps)/float64(totalKills) > 0.40 {
+		isGuilty = true
+	}
+
+	if snapCount > 3 || traceCount > 5 {
 		isGuilty = true
 	}
 
