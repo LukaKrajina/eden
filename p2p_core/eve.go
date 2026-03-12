@@ -749,13 +749,16 @@ func (bc *Blockchain) ProcessValidatorPayouts(matchID string, suspectID string, 
 
 	if len(honestValidators) > 0 && totalSlashedFunds > 0 {
 		var totalHonestStake float64
+		var shareRatio float64 = 0
 		for _, vID := range honestValidators {
 			totalHonestStake += bc.GetOrInitProfile(vID).StakedEDN
 		}
 
 		for _, vID := range honestValidators {
 			profile := bc.GetOrInitProfile(vID)
-			shareRatio := profile.StakedEDN / totalHonestStake
+			if totalHonestStake > 0 {
+				shareRatio = profile.StakedEDN / totalHonestStake
+			}
 			reward := totalSlashedFunds * shareRatio
 			bc.Balances[vID] += reward
 			profile.TribunalEDNEarned += reward

@@ -489,6 +489,7 @@ func StartVPNEgressWorker() {
 
 			streamLock.Lock()
 			targetStream, isUnicast := routingTable[destIP]
+			streamLock.Unlock()
 
 			if isUnicast {
 				targetStream.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
