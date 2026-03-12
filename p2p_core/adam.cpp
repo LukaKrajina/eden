@@ -143,7 +143,7 @@ extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     
     if (!Adapter) return -2;
 
-    std::string ipCmd = "netsh interface ip set address name=\"EdenVPN\" static " + std::string(virtualIP) + " 255.255.255.0 > nul 2>&1";
+    std::string ipCmd = "netsh interface ip set address name=\"EdenVPN\" static " + std::string(virtualIP) + " 255.0.0.0 > nul 2>&1";
     std::string mtuCmd = "netsh interface ipv4 set subinterface \"EdenVPN\" mtu=1400 store=persistent > nul 2>&1";
     RunHiddenCommand(ipCmd);
     RunHiddenCommand(mtuCmd);
