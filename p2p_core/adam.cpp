@@ -591,6 +591,11 @@ extern "C" __declspec(dllexport) const char* GetValidatorMetrics(char* peerID) {
 }
 
 extern "C" __declspec(dllexport) void FreeString(char* str) {
+    if (strncmp(str, "Error", 5) == 0 || 
+        strncmp(str, "[]", 2) == 0 || 
+        strncmp(str, "{}", 2) == 0) {
+        return; 
+    }
     if (ptrFreeString && str) {
         ptrFreeString(str);
     }
