@@ -377,16 +377,8 @@ extern "C" __declspec(dllexport) void GetDashboardData(bool* isMounted, char* da
 }
 
 extern "C" __declspec(dllexport) char* GetLocalPeerID() {
-    thread_local std::string cache; 
-    if (!ptrGetMyPeerID) return (char*)"";
-    char* res = ptrGetMyPeerID(); 
-    if (res) {
-        cache = res;
-        ptrFreeString(res);
-    } else {
-        cache = "";
-    }
-    return (char*)cache.c_str();
+    if (!ptrGetMyPeerID) return nullptr;
+    return ptrGetMyPeerID();
 }
 
 

@@ -356,8 +356,14 @@ type MatchAnnouncement struct {
 	TeamBPool float64 `json:"team_b_pool"`
 }
 
-var activeStreams = make(map[peer.ID]network.Stream)
-var routingTable = make(map[string]network.Stream)
+type StreamWorker struct {
+	stream network.Stream
+	queue  chan []byte
+	cancel context.CancelFunc
+}
+
+var activeStreams = make(map[peer.ID]*StreamWorker)
+var routingTable = make(map[string]*StreamWorker)
 var rendezvousString string
 var MyFriends = make(map[string]FriendInfo)
 var friendMutex sync.RWMutex
@@ -376,6 +382,52 @@ var roundsPlayed int = 0
 var activeSession *LiveMatchSession
 var FriendSystemKey = []byte("0123456789ABCDEF0123456789ABCDEF")
 var FinalMatchStats = make(map[string]map[string]interface{})
+
+func FastStreamWorker(ctx context.Context, s network.Stream) *StreamWorker {
+	ctx, cancel := context.WithCancel(ctx)
+	sw := &StreamWorker{
+		stream: s,
+		queue:  make(chan []byte, 4096),
+		cancel: cancel,
+	}
+	go sw.writerLoop(ctx)
+	return sw
+}
+
+func (sw *StreamWorker) writerLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case frame := <-sw.queue:
+			sw.stream.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
+			_, err := sw.stream.Write(frame)
+			sw.stream.SetWriteDeadline(time.Time{})
+			if err != nil {
+				if os.IsTimeout(err) {
+					continue
+				}
+			}
+		}
+	}
+}
+
+func (sw *StreamWorker) Enqueue(frame []byte) {
+	frameCopy := make([]byte, len(frame))
+	copy(frameCopy, frame)
+	select {
+	case sw.queue <- frameCopy:
+	default:
+		netStats.Lock()
+		netStats.PacketsLost++
+		netStats.Unlock()
+	}
+}
+
+func (sw *StreamWorker) Close() {
+	sw.cancel()
+	sw.stream.Close()
+}
 
 //export UpdateMyProfile
 func UpdateMyProfile(username *C.char, avatarURL *C.char) *C.char {
@@ -488,28 +540,19 @@ func StartVPNEgressWorker() {
 			destIP := net.IPv4(frame[7+16], frame[7+17], frame[7+18], frame[7+19]).String()
 
 			streamLock.Lock()
-			targetStream, isUnicast := routingTable[destIP]
-			streamLock.Unlock()
-
+			targetWorker, isUnicast := routingTable[destIP]
 			if isUnicast {
-				targetStream.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
-				_, err := targetStream.Write(frame)
-				if err != nil {
-					targetStream.SetWriteDeadline(time.Time{})
-				}
 				streamLock.Unlock()
-
+				targetWorker.Enqueue(frame)
 			} else if destIP == "255.255.255.255" || strings.HasSuffix(destIP, ".255") {
-				streamsCopy := make([]network.Stream, 0, len(activeStreams))
-				for _, s := range activeStreams {
-					streamsCopy = append(streamsCopy, s)
+				streamsCopy := make([]*StreamWorker, 0, len(activeStreams))
+				for _, sw := range activeStreams {
+					streamsCopy = append(streamsCopy, sw)
 				}
 				streamLock.Unlock()
 
-				for _, s := range streamsCopy {
-					s.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
-					s.Write(frame)
-					s.SetWriteDeadline(time.Time{})
+				for _, sw := range streamsCopy {
+					sw.Enqueue(frame)
 				}
 			} else {
 				streamLock.Unlock()
@@ -1072,9 +1115,13 @@ func StartEdenNode(virtualIP *C.char) *C.char {
 	h.SetStreamHandler(FriendProtocolID, HandleFriendStream)
 	h.SetStreamHandler(ProtocolID, func(s network.Stream) {
 		fmt.Println("[P2P] Incoming Game Connection")
+		if oldWorker, exists := activeStreams[s.Conn().RemotePeer()]; exists {
+			oldWorker.Close()
+		}
+		sw := FastStreamWorker(ctx, s)
 		streamLock.Lock()
-		activeStreams[s.Conn().RemotePeer()] = s
-		routingTable[getIPFromPeerID(s.Conn().RemotePeer().String())] = s
+		activeStreams[s.Conn().RemotePeer()] = sw
+		routingTable[getIPFromPeerID(s.Conn().RemotePeer().String())] = sw
 		streamLock.Unlock()
 		go readStreamLoop(s)
 	})
@@ -1493,9 +1540,9 @@ func GetMatchPassword(matchID *C.char) *C.char {
 //export StopEdenNode
 func StopEdenNode() {
 	streamLock.Lock()
-	for _, s := range activeStreams {
-		if s != nil {
-			s.Close()
+	for _, sw := range activeStreams {
+		if sw != nil {
+			sw.Close()
 		}
 	}
 
@@ -2069,9 +2116,9 @@ func InitPacketBridge(fn C.InjectVPNPacketFn) {
 //export HandleOutboundPacket
 func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 	streamLock.Lock()
-	streams := make([]network.Stream, 0, len(activeStreams))
-	for _, s := range activeStreams {
-		streams = append(streams, s)
+	streams := make([]*StreamWorker, 0, len(activeStreams))
+	for _, sw := range activeStreams {
+		streams = append(streams, sw)
 	}
 	streamLock.Unlock()
 
@@ -2108,10 +2155,12 @@ func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 	frame[6] = byte(seq)
 
 	cData := unsafe.Slice((*byte)(data), payloadLen)
+	egressFrame := make([]byte, totalLen)
 	copy(frame[7:], cData)
+	copy(egressFrame, frame)
 
 	select {
-	case vpnEgressQueue <- frame:
+	case vpnEgressQueue <- egressFrame:
 
 	default:
 		netStats.Lock()
@@ -2119,17 +2168,8 @@ func HandleOutboundPacket(data unsafe.Pointer, length C.int) {
 		netStats.Unlock()
 	}
 
-	for _, s := range streams {
-		s.Write(frame)
-	}
-
-	for _, s := range streams {
-		frameCopy := make([]byte, totalLen)
-		copy(frameCopy, frame)
-
-		go func(stream network.Stream, asyncFrame []byte) {
-			stream.Write(asyncFrame)
-		}(s, frameCopy)
+	for _, sw := range streams {
+		sw.Enqueue(frame)
 	}
 
 	bufferPool.Put(bufPtr)
@@ -2142,7 +2182,10 @@ func readStreamLoop(s network.Stream) {
 		destIP := getIPFromPeerID(remotePeer.String())
 
 		streamLock.Lock()
-		delete(activeStreams, remotePeer)
+		if sw, ok := activeStreams[remotePeer]; ok {
+			sw.cancel()
+			delete(activeStreams, remotePeer)
+		}
 		delete(routingTable, destIP)
 		streamLock.Unlock()
 
@@ -3300,7 +3343,9 @@ func AutoConnectToPeers(targetMode *C.char, targetMap *C.char) *C.char {
 	searchString := fmt.Sprintf("eden-cs2-%s-%s-v1.0.0-pro", modeStr, mapStr)
 
 	rd := routing.NewRoutingDiscovery(kademliaDHT)
-	peerChan, _ := rd.FindPeers(ctx, searchString)
+	searchCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	peerChan, _ := rd.FindPeers(searchCtx, searchString)
 
 	for p := range peerChan {
 		if p.ID == h.ID() || len(p.Addrs) == 0 {
@@ -3333,9 +3378,13 @@ func AutoConnectToPeers(targetMode *C.char, targetMap *C.char) *C.char {
 		if h.Connect(ctx, p) == nil {
 			s, err := h.NewStream(ctx, p.ID, ProtocolID)
 			if err == nil {
+				if oldWorker, exists := activeStreams[s.Conn().RemotePeer()]; exists {
+					oldWorker.Close()
+				}
+				sw := FastStreamWorker(ctx, s)
 				streamLock.Lock()
-				activeStreams[p.ID] = s
-				routingTable[getIPFromPeerID(p.ID.String())] = s
+				activeStreams[s.Conn().RemotePeer()] = sw
+				routingTable[getIPFromPeerID(s.Conn().RemotePeer().String())] = sw
 				streamLock.Unlock()
 				go readStreamLoop(s)
 				return C.CString(p.ID.String())
@@ -3365,9 +3414,13 @@ func ConnectToPeer(peerID *C.char) {
 	if err := h.Connect(ctx, peerInfo); err == nil {
 		s, err := h.NewStream(ctx, targetID, ProtocolID)
 		if err == nil {
+			if oldWorker, exists := activeStreams[s.Conn().RemotePeer()]; exists {
+				oldWorker.Close()
+			}
+			sw := FastStreamWorker(ctx, s)
 			streamLock.Lock()
-			activeStreams[targetID] = s
-			routingTable[getIPFromPeerID(targetID.String())] = s
+			activeStreams[s.Conn().RemotePeer()] = sw
+			routingTable[getIPFromPeerID(s.Conn().RemotePeer().String())] = sw
 			streamLock.Unlock()
 			go readStreamLoop(s)
 			fmt.Printf("[P2P] Successfully connected and opened stream to %s\n", pIDStr)
