@@ -509,25 +509,13 @@ func getMachineToken() string {
 	if localGSIToken != "" {
 		return localGSIToken
 	}
-	data := []string{}
-
-	if host, err := os.Hostname(); err == nil {
-		data = append(data, host)
+	if myPrivKey != "" {
+		hash := sha256.Sum256([]byte(myPrivKey + "_GSI_AUTH_SALT"))
+		localGSIToken = hex.EncodeToString(hash[:16])
+		return localGSIToken
 	}
 
-	if interfaces, err := net.Interfaces(); err == nil {
-		for _, i := range interfaces {
-			if len(i.HardwareAddr) > 0 {
-				data = append(data, i.HardwareAddr.String())
-			}
-		}
-	}
-
-	sort.Strings(data)
-
-	rawString := strings.Join(data, "|")
-	hash := sha256.Sum256([]byte(rawString))
-	return hex.EncodeToString(hash[:16])
+	return "FALLBACK_PENDING_IDENTITY"
 }
 
 func StartVPNEgressWorker() {
@@ -760,7 +748,17 @@ func StartGSIServer() {
 
 			fmt.Printf("[GSI] Match Ended. Winner: %s | MVP: %s. Broadcasting Vote...\n", winningTeamName, mvpSteamID)
 
-			votePayload := fmt.Sprintf("%s:%s:%s:%s", currentMatchID, myVerdict, mvpSteamID, alignmentStr)
+			demoFile := fmt.Sprintf("./replays/%s.dem", currentMatchID)
+			localDemoHash := "NO_HASH"
+			if b, err := os.ReadFile(demoFile); err == nil {
+				h := sha256.Sum256(b)
+				localDemoHash = hex.EncodeToString(h[:])
+			} else {
+				pseudoHash := sha256.Sum256([]byte(currentMatchID + h.ID().String()))
+				localDemoHash = hex.EncodeToString(pseudoHash[:])
+			}
+
+			votePayload := fmt.Sprintf("%s:%s:%s:%s:%s", currentMatchID, myVerdict, mvpSteamID, alignmentStr, localDemoHash)
 
 			pubKeyBytes, _ := hex.DecodeString(myPubKey)
 
@@ -2977,8 +2975,19 @@ func HandleDemoRequest(s network.Stream) {
 	}
 }
 
-func FetchDemoAndAnalyze(ctx context.Context, hostPeerIDStr string, matchID string, suspectPeerID string) {
-	targetID, err := peer.Decode(hostPeerIDStr)
+func FetchDemoAndAnalyze(ctx context.Context, session MatchSessionInfo, matchID string, suspectPeerID string) {
+
+	var providerIDStr string = session.HostID
+
+	for wID, wData := range session.Witnesses {
+		if wID != suspectPeerID && wID != session.HostID && wData.DemoHash != "NO_HASH" {
+			providerIDStr = wID
+			fmt.Printf("[Tribunal] Selected non-host witness %s for demo verification.\n", providerIDStr)
+			break
+		}
+	}
+
+	targetID, err := peer.Decode(providerIDStr)
 	if err != nil {
 		fmt.Println("[Tribunal] Invalid host peer ID")
 		return

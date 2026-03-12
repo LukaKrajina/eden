@@ -546,6 +546,20 @@ func (bc *Blockchain) ProcessBlockState(b Block) bool {
 				continue
 			}
 
+			demoHash := "NO_HASH"
+			if len(parts) > 4 {
+				demoHash = parts[4]
+			}
+
+			if session.Witnesses == nil {
+				session.Witnesses = make(map[string]WitnessVote)
+			}
+			session.Witnesses[tx.Sender] = WitnessVote{
+				WinnerTeam: votedWinner,
+				DemoHash:   demoHash,
+			}
+			bc.MatchSessions[matchID] = session
+
 			isParticipant := false
 
 			for _, p := range session.Roster {
@@ -843,7 +857,7 @@ func (bc *Blockchain) DistributePlayerXP(matchID string, roster []string, winner
 			fmt.Printf("[Anti-Cheat] Anomalous rating %.2f detected for %s! Automatically triggering Tribunal...\n", rating, peerID)
 			myProfile := bc.GetOrInitProfile(myPeerID)
 			if myProfile.StakedEDN > 0 {
-				go FetchDemoAndAnalyze(ctx, session.HostID, matchID, peerID)
+				go FetchDemoAndAnalyze(ctx, session, matchID, peerID)
 			}
 		}
 	}
