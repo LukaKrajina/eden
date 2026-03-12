@@ -2268,7 +2268,12 @@ func GetNetworkQuality() int {
 
 func setupPubSub() {
 	var err error
-	pubSub, err = pubsub.NewGossipSub(ctx, h)
+	pubSub, err = pubsub.NewGossipSub(
+		ctx,
+		h,
+		pubsub.WithFloodPublish(true),
+		pubsub.WithPeerExchange(true),
+	)
 	if err != nil {
 		return
 	}
