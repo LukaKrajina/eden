@@ -34,7 +34,7 @@ class GameRunner {
       String friendlyFire,
       bool recordDemo,
       int port,
-      {String? serverPassword}
+      {String? serverPassword, String? matchId}
     ) async {
     
     String serverExe;
@@ -66,9 +66,14 @@ class GameRunner {
     if (recordDemo) {
       args.addAll([
         '+tv_enable', '1',
-        '+tv_autorecord', '1', 
         '+tv_delay', '0', 
       ]);
+
+      if (matchId != null && matchId.isNotEmpty) {
+        args.addAll(['+tv_record', matchId]); 
+      } else {
+        args.addAll(['+tv_autorecord', '1']);
+      }
     }
 
     if (serverPassword != null && serverPassword.isNotEmpty) {
