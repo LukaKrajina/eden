@@ -131,6 +131,7 @@ static FreeStringFunc ptrFreeString = nullptr;
 
 bool LoadWintun();
 void ReadFromTunLoop();
+bool RunHiddenCommand(const std::string& commandLine);
 
 extern "C" __declspec(dllexport) int SetupAdapter(char* virtualIP) {
     if (!LoadWintun()) return -1;
@@ -263,7 +264,7 @@ bool LoadGoDLL() {
     return false;
 }
 
-void RunHiddenCommand(const std::string& commandLine) {
+bool RunHiddenCommand(const std::string& commandLine) {
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));

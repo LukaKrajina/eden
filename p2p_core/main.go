@@ -1552,7 +1552,7 @@ func StopEdenNode() {
 		}
 	}
 
-	activeStreams = make(map[peer.ID]network.Stream)
+	activeStreams = make(map[peer.ID]*StreamWorker)
 	streamLock.Unlock()
 	if nodeCancel != nil {
 		nodeCancel()
