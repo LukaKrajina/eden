@@ -26,7 +26,7 @@
 * **Smart Wagering:** Decentralized betting pools for live matches (CT vs T) with automated payouts based on consensus results.
 * **Asset Marketplace:** List Steam inventory items (Skins) for auction using a trustless escrow system backed by the chain.
 
-### 📊 **Deep Analytics (Rust Core)**
+### 📊 **Deep Analytics**
 * **Automated Tribunal:** High-performance Go engine parses `.dem` replay files using `demoinfocs-golang` to automatically detect suspicious snaps and wall-tracing.
 * **Glicko-2 Rating (Abel2):** Decentralized calculation of player skill (Rating & Deviation) directly on the blockchain.
 * **Persistent Stats:** Stores match history and player performance locally.
