@@ -11,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-blue)
 ![Status](https://img.shields.io/badge/Status-Alpha-orange)
 
-**Eden** is a hybrid-architecture application that merges a peer-to-peer VPN, a custom blockchain, and high-performance game analytics into a single competitive platform for Counter-Strike 2. It allows players to host decentralized matches, wager on outcomes, trade virtual assets, and analyze gameplay with professional-grade metrics.
+**Eden** is a hybrid-architecture application that merges a peer-to-peer VPN, a custom blockchain, and high-performance game analytics into a single competitive platform for Counter-Strike 2/Go. It allows players to host decentralized matches, wager on outcomes, trade virtual assets, and analyze gameplay with professional-grade metrics.
 
 ---
 
