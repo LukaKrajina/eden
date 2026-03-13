@@ -1,5 +1,12 @@
 # 🍎 Eden
 
+<p align="center">
+<img src="assets/icon/app_icon.png" alt="Eden Logo" width="150" height="150">
+</p>
+
+<p align="center">
+<b>The Decentralized Counter-Strike 2 Competitive Hub</b>
+
 **The Decentralized Counter-Strike 2 Competitive Hub**
 
 ![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg)
