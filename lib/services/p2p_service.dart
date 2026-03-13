@@ -280,6 +280,9 @@ class P2PService {
     try {
       final str = ptr.toDartString();
       return str;
+    } catch (e) {
+      print("[FFI Error] Failed to parse native string: $e");
+      return "Error: Memory parsing failure";
     } finally {
       _freeString(ptr);
     }

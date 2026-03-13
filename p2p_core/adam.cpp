@@ -263,7 +263,7 @@ bool LoadGoDLL() {
     return false;
 }
 
-void RunHiddenCommand(const std::string& cmd) {
+void RunHiddenCommand(const std::string& commandLine) {
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));
@@ -272,14 +272,18 @@ void RunHiddenCommand(const std::string& cmd) {
     si.wShowWindow = SW_HIDE;
     ZeroMemory(&pi, sizeof(pi));
 
-    char* cmdBuffer = _strdup(("cmd.exe /c " + cmd).c_str());
+    std::vector<char> cmdBuffer(commandLine.begin(), commandLine.end());
+    cmdBuffer.push_back('\0');
 
-    if (CreateProcessA(NULL, cmdBuffer, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    if (CreateProcessA(NULL, cmdBuffer.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
+        return exitCode == 0;
     }
-    free(cmdBuffer);
+    return false;
 }
 
 void ReadFromTunLoop() {
@@ -409,7 +413,7 @@ extern "C" __declspec(dllexport) void AdvertiseHostLobby(char* mode, char* mapNa
 
 extern "C" __declspec(dllexport) const char* GetMatchPassword(char* matchID) {
     if (ptrGetMatchPassword) return ptrGetMatchPassword(matchID);
-    return "Error: DLL Func Missing";
+    return _strdup("Error: DLL Func Missing");
 }
 
 extern "C" __declspec(dllexport) const char* AbortMatch(char* matchID) {
@@ -479,7 +483,7 @@ extern "C" __declspec(dllexport) void UpdateSteamAPIKey(char* key) {
 
 extern "C" __declspec(dllexport) const char* GetSteamInventory(char* steamID) {
     if (ptrFetchMyInventory) return ptrFetchMyInventory(steamID);
-    return "[]";
+    return _strdup("[]");
 }
 
 extern "C" __declspec(dllexport) const char* StartNetworkMatch(char* matchID, char* playerList, char* password) {
