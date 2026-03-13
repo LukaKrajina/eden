@@ -400,13 +400,11 @@ func (sw *StreamWorker) writerLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case frame := <-sw.queue:
-			sw.stream.SetWriteDeadline(time.Now().Add(15 * time.Millisecond))
 			_, err := sw.stream.Write(frame)
-			sw.stream.SetWriteDeadline(time.Time{})
 			if err != nil {
-				if os.IsTimeout(err) {
-					continue
-				}
+				fmt.Printf("[P2P] Stream write failed, tearing down worker: %v\n", err)
+				sw.Close()
+				return
 			}
 		}
 	}
@@ -1194,9 +1192,11 @@ func HandleSyncRequest(s network.Stream) {
 
 	EdenChain.Mutex.RLock()
 	localHeight := EdenChain.LastBlock.Index + 1
+	localWeight := EdenChain.LastBlock.ChainWeight
 
 	resp := SyncResponse{
-		Height: localHeight,
+		Height:      localHeight,
+		ChainWeight: localWeight,
 	}
 
 	switch req.Type {
@@ -1317,45 +1317,8 @@ func TriggerSync(pID peer.ID) {
 		}
 	}
 
-	if ancestor < localHeight-1 {
-		fmt.Printf("[Sync] Reorganizing Chain. Rolling back from %d to %d\n", localHeight-1, ancestor)
-		EdenChain.Mutex.Lock()
-
-		batch := new(leveldb.Batch)
-		for i := localHeight - 1; i > ancestor; i-- {
-			key := fmt.Sprintf("block_%d", i)
-			batch.Delete([]byte(key))
-		}
-
-		batch.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)))
-		EdenChain.Database.Write(batch, nil)
-
-		EdenChain.Balances = make(map[string]float64)
-		EdenChain.Profiles = make(map[string]*UserProfile)
-		EdenChain.SteamToPeerID = make(map[string]string)
-		EdenChain.ActiveAuctions = make(map[string]*Auction)
-		EdenChain.ActivePools = make(map[string]*BettingPool)
-		EdenChain.ActiveEscrows = make(map[string]*Escrow)
-		EdenChain.AccountNonces = make(map[string]uint64)
-		EdenChain.MatchSessions = make(map[string]MatchSessionInfo)
-		EdenChain.MatchVotes = make(map[string]map[string]string)
-		EdenChain.FriendRegistry = make(map[string]string)
-
-		validBlocks := EdenChain.GetBlocksRange(0, ancestor+1)
-		for _, b := range validBlocks {
-			EdenChain.ProcessBlockState(b)
-		}
-
-		if len(validBlocks) > 0 {
-			EdenChain.LastBlock = validBlocks[len(validBlocks)-1]
-		} else {
-			EdenChain.LastBlock = Block{Index: -1, Hash: "0"}
-		}
-
-		EdenChain.Mutex.Unlock()
-	}
-
 	startDownload := ancestor + 1
+	var pendingBlocks []Block
 	for startDownload < status.Height {
 
 		req := SyncRequest{
@@ -1365,23 +1328,68 @@ func TriggerSync(pID peer.ID) {
 		}
 
 		resp, err := requestSync(pID, req)
-		if err != nil {
+		if err != nil || len(resp.Blocks) == 0 {
 			break
 		}
 
-		if len(resp.Blocks) == 0 {
-			break
-		}
-
-		for _, b := range resp.Blocks {
-			if !EdenChain.AddBlock(b) {
-				fmt.Println("[Sync] Failed to append downloaded block. Chain invalid.")
-				return
-			}
-		}
+		pendingBlocks = append(pendingBlocks, resp.Blocks...)
 		startDownload += len(resp.Blocks)
 	}
+	if len(pendingBlocks) == 0 {
+		fmt.Println("[Sync] Peer failed to provide blocks. Aborting sync.")
+		return
+	}
 
+	if pendingBlocks[len(pendingBlocks)-1].ChainWeight <= localWeight {
+		fmt.Println("[Sync] Downloaded fork is invalid or lighter than local chain. Rejecting.")
+		return
+	}
+
+	fmt.Printf("[Sync] Valid fork downloaded. Reorganizing Chain from %d to %d\n", localHeight-1, ancestor)
+	EdenChain.Mutex.Lock()
+
+	batch := new(leveldb.Batch)
+	for i := localHeight - 1; i > ancestor; i-- {
+		key := fmt.Sprintf("block_%d", i)
+		batch.Delete([]byte(key))
+	}
+
+	batch.Put([]byte("latest_index"), []byte(fmt.Sprintf("%d", ancestor)))
+	EdenChain.Database.Write(batch, nil)
+	EdenChain.Balances = make(map[string]float64)
+	EdenChain.Profiles = make(map[string]*UserProfile)
+	EdenChain.SteamToPeerID = make(map[string]string)
+	EdenChain.ActiveAuctions = make(map[string]*Auction)
+	EdenChain.ActivePools = make(map[string]*BettingPool)
+	EdenChain.ActiveEscrows = make(map[string]*Escrow)
+	EdenChain.AccountNonces = make(map[string]uint64)
+	EdenChain.MatchSessions = make(map[string]MatchSessionInfo)
+	EdenChain.MatchVotes = make(map[string]map[string]string)
+	EdenChain.FriendRegistry = make(map[string]string)
+	EdenChain.PublicKeys = make(map[string]string)
+	EdenChain.TribunalVotes = make(map[string]map[string]map[string]bool)
+	EdenChain.QueueBans = make(map[string]int64)
+	validBlocks := EdenChain.GetBlocksRange(0, ancestor+1)
+
+	for _, b := range validBlocks {
+		EdenChain.ProcessBlockState(b)
+	}
+
+	if len(validBlocks) > 0 {
+		EdenChain.LastBlock = validBlocks[len(validBlocks)-1]
+	} else {
+		EdenChain.LastBlock = Block{Index: -1, Hash: "0"}
+	}
+	for _, b := range pendingBlocks {
+		if !EdenChain.ProcessBlockState(b) {
+			fmt.Println("[Sync] CRITICAL: ProcessBlockState failed on validated block during reorganization.")
+			break
+		}
+		EdenChain.LastBlock = b
+		EdenChain.SaveBlockToDB(b)
+	}
+
+	EdenChain.Mutex.Unlock()
 	fmt.Println("[Sync] Synchronization Complete.")
 }
 
@@ -2500,6 +2508,14 @@ func TryFormLobby(mode string) {
 		return
 	}
 
+	now := time.Now().Unix()
+	for id, t := range activeTickets {
+		if now-t.Timestamp > 45 {
+			fmt.Printf("[Matchmaking] Pruning stale ticket: %s\n", id)
+			delete(activeTickets, id)
+		}
+	}
+
 	var validTickets []MatchmakingTicket
 	for _, t := range activeTickets {
 		if t.Mode == mode {
@@ -3491,6 +3507,32 @@ func EnterMatchmaking(mode *C.char, partyList *C.char) *C.char {
 	fmt.Printf("[Matchmaking] Entered %s queue at %.0f Elo. Ticket: %s\n", modeStr, avgElo, ticket.TicketID)
 
 	go TryFormLobby(modeStr)
+
+	go func(t MatchmakingTicket, payload []byte) {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				queueMutex.RLock()
+				stillInQueue := inQueue && myCurrentTicket == t.TicketID
+				queueMutex.RUnlock()
+
+				if !stillInQueue {
+					return
+				}
+
+				if queueTopic != nil {
+					t.Timestamp = time.Now().Unix()
+					freshData, _ := json.Marshal(t)
+					queueTopic.Publish(ctx, freshData)
+				}
+			}
+		}
+	}(ticket, data)
 
 	return C.CString("Success: In Queue")
 }

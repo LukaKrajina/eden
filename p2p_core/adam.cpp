@@ -287,20 +287,25 @@ void ReadFromTunLoop() {
     
     while (IsRunning) {
         if (WaitForSingleObject(waitHandle, 100) == WAIT_OBJECT_0) {
-            DWORD packetSize;
-            BYTE* packet = ptrReceivePacket(Session, &packetSize);
-            
-            if (packet) {
-                if (ptrSendToP2P && packetSize > 20) {
-                     if ((packet[0] >> 4) == 4) {
-                         BYTE protocol = packet[9];
-                         if (protocol == 17 || protocol == 1 || protocol == 6) {
-                             ptrSendToP2P((void*)packet, (int)packetSize);
-                         }
-                     }
-                }
+            while (true)
+            {
+                DWORD packetSize;
+                BYTE* packet = ptrReceivePacket(Session, &packetSize);
                 
-                ptrReleaseReceivePacket(Session, packet);
+                if (packet) {
+                    if (ptrSendToP2P && packetSize > 20) {
+                        if ((packet[0] >> 4) == 4) {
+                            BYTE protocol = packet[9];
+                            if (protocol == 17 || protocol == 1 || protocol == 6) {
+                                ptrSendToP2P((void*)packet, (int)packetSize);
+                            }
+                        }
+                    }
+                    
+                    ptrReleaseReceivePacket(Session, packet);
+                } else {
+                    break;
+                }
             }
         }
     }
