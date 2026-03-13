@@ -1,6 +1,23 @@
+/*
+    Eden
+    Copyright (C) 2026 LukaKrajina
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert'; // Added for JSON
+import 'dart:convert';
 import 'package:eden/misc/mod_config_mapper.dart';
 import 'package:eden/widget/match_ready_room.dart';
 import 'package:eden/widget/match_roster_dialog.dart';

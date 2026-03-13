@@ -69,6 +69,23 @@
 </template>
 
 <script lang="ts" setup>
+/*
+    Eden
+    Copyright (C) 2026 LukaKrajina
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 import { ref, onMounted } from 'vue';
 
 interface Match {
@@ -110,18 +127,14 @@ const selectMatch = async (id: number) => {
   }
 };
 
-// Helpers
 const formatDate = (d: string) => new Date(d).toLocaleDateString();
 
-// lib.rs stores map names as raw strings (e.g., "maps/de_mirage.vpk")
-// We strip path/extension for UI display
 const cleanMapName = (map: string) => {
   return map.replace(/^maps\//, '').replace(/\.vpk$/, '');
 };
 
 const getKdColor = (k: number, d: number) => (k/d >= 1 ? 'text-green' : 'text-red');
 
-// Rating 2.0 Scaling
 const getRatingClass = (r: number) => {
   const val = Number(r) || 0;
   if (val >= 1.20) return 'rating-god';
@@ -131,8 +144,6 @@ const getRatingClass = (r: number) => {
 </script>
 
 <style scoped>
-
-/* Faceit/Eden Theme Variables */
 
 :root {
   --bg-dark: #121212;
@@ -150,7 +161,6 @@ const getRatingClass = (r: number) => {
   font-family: 'Inter', sans-serif;
 }
 
-/* Sidebar */
 .match-sidebar {
   width: 300px;
   background: #181818;
@@ -183,7 +193,6 @@ const getRatingClass = (r: number) => {
 .match-score { font-family: 'Oswald'; font-size: 16px; margin-top: 2px; }
 .ct { color: #5D79AE; } .t { color: #DE9B35; }
 
-/* Stats Panel */
 .stats-panel { flex: 1; padding: 40px; overflow-y: auto; }
 
 .panel-header {
