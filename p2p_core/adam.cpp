@@ -63,6 +63,7 @@ typedef char* (*GetIPForPeerFunc)(const char* peerID);
 typedef char* (*GetMatchPasswordFunc)(char* matchID);
 typedef char* (*StartMatchFunc)(char* matchID, char* playerList, char* password);
 typedef char* (*AbortMatchFunc)(char* matchID);
+typedef void (*RegisterMatchEndedCallbackFunc)(void* callback);
 typedef char* (*GetWalletPubKeyFunc)();
 typedef void (*StopNodeFunc)();
 typedef char* (*GetMyPeerIDFunc)();
@@ -138,6 +139,7 @@ AdvertiseHostLobbyFunc ptrAdvertiseHostLobby = nullptr;
 static EnterMatchmakingFunc ptrEnterMatchmaking = nullptr;
 static LeaveMatchmakingFunc ptrLeaveMatchmaking = nullptr;
 static RegisterMatchCallbackFunc ptrRegisterMatchCallback = nullptr;
+static RegisterMatchEndedCallbackFunc ptrRegisterMatchEndedCallback = nullptr;
 static BroadcastMapVetoFunc ptrBroadcastMapVeto = nullptr;
 static GetMatchVetoesFunc ptrGetMatchVetoes = nullptr;
 SubmitDodgePenaltyFunc ptrSubmitDodgePenalty = nullptr;
@@ -263,6 +265,7 @@ bool LoadGoDLL() {
     ptrEnterMatchmaking = (EnterMatchmakingFunc)GetProcAddress(hGo, "EnterMatchmaking");
     ptrLeaveMatchmaking = (LeaveMatchmakingFunc)GetProcAddress(hGo, "LeaveMatchmaking");
     ptrRegisterMatchCallback = (RegisterMatchCallbackFunc)GetProcAddress(hGo, "RegisterMatchCallback");
+    ptrRegisterMatchEndedCallback = (RegisterMatchEndedCallbackFunc)GetProcAddress(hGo, "RegisterMatchEndedCallback");
     ptrBroadcastMapVeto = (BroadcastMapVetoFunc)GetProcAddress(hGo, "BroadcastMapVeto");
     ptrGetMatchVetoes = (GetMatchVetoesFunc)GetProcAddress(hGo, "GetMatchVetoes");
     ptrSubmitDodgePenalty = (SubmitDodgePenaltyFunc)GetProcAddress(hGo, "SubmitDodgePenalty");
@@ -592,6 +595,12 @@ extern "C" __declspec(dllexport) void LeaveMatchmaking() {
 extern "C" __declspec(dllexport) void RegisterMatchCallback(void* callbackFn) {
     if (ptrRegisterMatchCallback) {
         ptrRegisterMatchCallback(callbackFn);
+    }
+}
+
+extern "C" __declspec(dllexport) void RegisterMatchEndCallback(void* callbackFn) {
+    if (ptrRegisterMatchEndedCallback) {
+        ptrRegisterMatchEndedCallback(callbackFn);
     }
 }
 

@@ -25,6 +25,8 @@ typedef void (*InjectVPNPacketFn)(void* data, int len);
 
 typedef void (*MatchFoundCallbackFn)(char* matchID, char* hostID, char* rosterList);
 
+typedef void (*MatchEndedCallbackFn)(char* matchID);
+
 static InjectVPNPacketFn ptrInjectVPNPacket = NULL;
 
 static void SetInjectPacketPointer(InjectVPNPacketFn ptr) {
@@ -45,6 +47,8 @@ static void* GetGoCallback() {
 
 static MatchFoundCallbackFn ptrMatchFoundCallback = NULL;
 
+static MatchEndedCallbackFn ptrMatchEndedCallback = NULL;
+
 static void SetMatchFoundCallback(MatchFoundCallbackFn ptr) {
     ptrMatchFoundCallback = ptr;
 }
@@ -52,6 +56,16 @@ static void SetMatchFoundCallback(MatchFoundCallbackFn ptr) {
 static void CallMatchFound(char* matchID, char* hostID, char* rosterList) {
     if (ptrMatchFoundCallback != NULL) {
         ptrMatchFoundCallback(matchID, hostID, rosterList);
+    }
+}
+
+static void SetMatchEndedCallback(MatchEndedCallbackFn ptr) {
+    ptrMatchEndedCallback = ptr;
+}
+
+static void CallMatchEnded(char* matchID) {
+    if (ptrMatchEndedCallback != NULL) {
+        ptrMatchEndedCallback(matchID);
     }
 }
 */
@@ -763,6 +777,9 @@ func StartGSIServer() {
 
 			fmt.Printf("[GSI] Match Ended. Winner: %s | MVP: %s. Broadcasting Vote...\n", winningTeamName, mvpSteamID)
 
+			cMatchIDStr := C.CString(currentMatchID)
+			C.CallMatchEnded(cMatchIDStr)
+			C.free(unsafe.Pointer(cMatchIDStr))
 			demoFile := fmt.Sprintf("./replays/%s.dem", currentMatchID)
 			localDemoHash := "NO_HASH"
 			if b, err := os.ReadFile(demoFile); err == nil {
@@ -3585,6 +3602,11 @@ func GetMatchVetoes(matchID *C.char) *C.char {
 
 	data, _ := json.Marshal(bans)
 	return C.CString(string(data))
+}
+
+//export RegisterMatchEndedCallback
+func RegisterMatchEndedCallback(fn C.MatchEndedCallbackFn) {
+	C.SetMatchEndedCallback(fn)
 }
 
 //export GetMyBanExpiry

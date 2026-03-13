@@ -158,6 +158,10 @@ typedef GetMatchStatsDart = Pointer<Utf8> Function(Pointer<Utf8> matchID);
 typedef GetValidatorMetricsC = Pointer<Utf8> Function(Pointer<Utf8> peerID);
 typedef GetValidatorMetricsDart = Pointer<Utf8> Function(Pointer<Utf8> peerID);
 
+typedef MatchEndedCallbackC = Void Function(Pointer<Utf8> matchID);
+typedef RegisterMatchEndedCallbackC = Void Function(Pointer<NativeFunction<MatchEndedCallbackC>> callback);
+typedef RegisterMatchEndedCallbackDart = void Function(Pointer<NativeFunction<MatchEndedCallbackC>> callback);
+
 class DashboardInfo {
   final bool isMounted;
   final String date;
@@ -215,8 +219,10 @@ class P2PService {
   late GetMyBanExpiryDart _getMyBanExpiry;
   late GetMatchStatsDart _getMatchStats;
   late GetValidatorMetricsDart _getValidatorMetrics;
+  late RegisterMatchEndedCallbackDart _registerMatchEndedCallback;
 
   Function(String matchID, String hostID, List<String> roster)? onMatchFound;
+  Function(String matchID)? onMatchEnded;
 
   P2PService._internal() {
     if (Platform.isWindows) {
@@ -278,6 +284,8 @@ class P2PService {
     _getMyBanExpiry = _lib.lookupFunction<GetMyBanExpiryC, GetMyBanExpiryDart>('GetMyBanExpiry');
     _getMatchStats = _lib.lookupFunction<GetMatchStatsC, GetMatchStatsDart>('GetMatchStats');
     _getValidatorMetrics = _lib.lookupFunction<GetValidatorMetricsC, GetValidatorMetricsDart>('GetValidatorMetrics');
+    _registerMatchEndedCallback = _lib.lookupFunction<RegisterMatchEndedCallbackC, RegisterMatchEndedCallbackDart>('RegisterMatchEndCallback');
+    _registerMatchEndedCallback(Pointer.fromFunction<MatchEndedCallbackC>(_matchEndedHandler));
   }
 
   static void _matchFoundHandler(Pointer<Utf8> matchIDPtr, Pointer<Utf8> hostIDPtr, Pointer<Utf8> rosterListPtr) {
@@ -289,6 +297,13 @@ class P2PService {
 
     if (_instance.onMatchFound != null) {
       _instance.onMatchFound!(matchID, hostID, roster);
+    }
+  }
+
+  static void _matchEndedHandler(Pointer<Utf8> matchIDPtr) {
+    final matchID = matchIDPtr.toDartString();
+    if (_instance.onMatchEnded != null) {
+      _instance.onMatchEnded!(matchID);
     }
   }
 

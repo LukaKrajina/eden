@@ -167,4 +167,22 @@ class GameRunner {
       }
     }
   }
+
+  Future<void> relocateDemo(String gamePath, String gameVersion, String matchId, String targetDirectory) async {
+    String demoName = '$matchId.dem';
+    
+    String sourceDir = gameVersion == "CS2" ? p.join(gamePath, 'game', 'csgo') : p.join(gamePath, 'csgo');
+    String sourcePath = p.join(sourceDir, demoName);
+    
+    String destPath = p.join(targetDirectory, demoName);
+    final sourceFile = File(sourcePath);
+    
+    if (await sourceFile.exists()) {
+      await sourceFile.copy(destPath);
+      await sourceFile.delete();
+      print("[GameRunner] Successfully moved demo to Tribunal directory: $destPath");
+    } else {
+      print("[GameRunner] Error: Could not find demo at $sourcePath");
+    }
+  }
 }

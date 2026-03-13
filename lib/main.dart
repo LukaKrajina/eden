@@ -78,6 +78,17 @@ void main() async {
     p2p.updateSteamAPIKey(g_steamApiKey);
   }
 
+  p2p.onMatchEnded = (String matchID) async {
+    print("[Eden] Match $matchID has concluded. Relocating demo...");
+    
+    gameRunner.stopServer();
+    
+    await Future.delayed(const Duration(seconds: 2));
+    
+    String activePath = g_selectedGame == "CS2" ? g_CS2Path : g_CSGOServerPath;
+    await gameRunner.relocateDemo(activePath, g_selectedGame, matchID, './replays');
+  };
+
   try{
     await apiServer.start(g_dbUser, g_DbPassword);
   } catch (e) {
