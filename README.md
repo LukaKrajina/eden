@@ -161,7 +161,10 @@ Other Third party:
 Educational Purpose Only: This software intercepts network traffic and modifies game configurations (GSI). While it includes an "Anti-Cheat" shield toggle, usage alongside Valve Anti-Cheat (VAC) is at your own risk.
 
 Virtual Currency: The EDN token is a testnet currency used for gameplay mechanics and has no real-world monetary value.
-Reason 1: The project has many unresolved issues. Reason 2: Respect local laws and do not use it for illegal purposes such as money laundering, fraud, or other illegal activities. If any legal issues arise due to malicious use/modification of the code, the user/modifier will bear the consequences, and the original author will not be held responsible.
+
+Reason 1: The project has many unresolved issues. 
+
+Reason 2: Respect local laws and do not use it for illegal purposes such as money laundering, fraud, or other illegal activities. If any legal issues arise due to malicious use/modification of the code, the user/modifier will bear the consequences, and the original author will not be held responsible.
 
 License: GPL 3.0 (See LICENSE.txt)
 
