@@ -7,8 +7,6 @@
 <p align="center">
 <b>The Decentralized Counter-Strike 2 Competitive Hub</b>
 
-**The Decentralized Counter-Strike 2 Competitive Hub**
-
 ![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-blue)
 ![Status](https://img.shields.io/badge/Status-Alpha-orange)
