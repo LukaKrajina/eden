@@ -22,13 +22,15 @@
 * **Asset Marketplace:** List Steam inventory items (Skins) for auction using a trustless escrow system backed by the chain.
 
 ### 📊 **Deep Analytics (Rust Core)**
-* **Demo Parsing:** High-performance Rust engine parses `.dem` replay files to extract K/D, ADR (Average Damage per Round), and HLTV 2.0 Ratings.
-* **Persistent Stats:** Stores match history and player performance in a local PostgreSQL database.
+* **Automated Tribunal:** High-performance Go engine parses `.dem` replay files using `demoinfocs-golang` to automatically detect suspicious snaps and wall-tracing.
+* **Glicko-2 Rating (Abel2):** Decentralized calculation of player skill (Rating & Deviation) directly on the blockchain.
+* **Persistent Stats:** Stores match history and player performance locally.
 
 ### 🎮 **Competitive Suite**
 * **Game State Integration (GSI):** Real-time match tracking (Score, Phase, MVPs) via a local HTTP oracle.
+* **Map Vetoes & Penalties:** Integrated lobby system with map vetos, match ready-states, and automatic queue bans for dodgers.
 * **Social Hub:** Encrypted Friend Codes, direct messaging, and profile progression (Levels/XP).
-* **Pro Configs:** Built-in repository of professional player settings (e.g., s1mple, ZywOo).
+* **Pro Configs:** Built-in repository of professional player settings.
 
 ---
 
@@ -136,6 +138,17 @@ Eden uses a eden_config.json file for local settings. If not present, it can be 
 }
 ```
 
+📦 Third-Party Libraries
+Eden heavily relies on the open-source community. The Go backend utilizes:
+
+libp2p: The core modular network stack (including go-libp2p-kad-dht, go-libp2p-pubsub, and go-multiaddr).
+
+goleveldb: Fast, local key/value storage powering the EdenChain state.
+
+demoinfocs-golang: High-performance CS:GO and CS2 demo parser used for the automated Tribunal.
+
+golang/geo: S2 geometry library (specifically r3 vectors) used to detect anomalous crosshair movements and wall-tracing.
+
 ⚠️ Disclaimer
 Educational Purpose Only: This software intercepts network traffic and modifies game configurations (GSI). While it includes an "Anti-Cheat" shield toggle, usage alongside Valve Anti-Cheat (VAC) is at your own risk.
 
@@ -152,4 +165,4 @@ Third party:
 
 License: GPL 3.0 (See LICENSE.txt)
 
-Copyright © 2026 [LukaKrajina] & The Eden Project
+Copyright © 2026 LukaKrajina & The Eden Project
